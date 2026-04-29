@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import { Menu, X, Phone } from "lucide-react";
 import { PHONE, PHONE_DISPLAY } from "@/lib/contact";
+import logo from "@/assets/logo.png";
 
 const nav = [
   { to: "/", label: "Home" },
@@ -19,14 +20,8 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/50 bg-background/85 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-6">
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-gradient-gold shadow-gold">
-            <span className="font-display text-lg font-bold text-navy">K</span>
-          </div>
-          <div className="leading-tight">
-            <div className="font-display text-base font-bold text-navy">Kalpana Associates</div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">& Construction</div>
-          </div>
+        <Link to="/" className="flex items-center gap-2.5" aria-label="Kalpana Associates home">
+          <img src={logo} alt="Kalpana Associates & Construction" className="h-12 w-auto md:h-14" />
         </Link>
 
         <nav className="hidden lg:flex items-center gap-1">

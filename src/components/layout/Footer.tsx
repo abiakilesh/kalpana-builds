@@ -1,20 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { Phone, Mail, MapPin } from "lucide-react";
 import { PHONE, PHONE_DISPLAY, EMAIL } from "@/lib/contact";
+import logo from "@/assets/logo.png";
 
 export function Footer() {
   return (
     <footer className="bg-navy text-primary-foreground mt-auto">
       <div className="mx-auto max-w-7xl px-4 md:px-6 py-14 grid gap-10 md:grid-cols-4">
         <div className="space-y-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-gradient-gold">
-              <span className="font-display text-lg font-bold text-navy">K</span>
-            </div>
-            <div className="leading-tight">
-              <div className="font-display text-base font-bold">Kalpana Associates</div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-white/60">& Construction</div>
-            </div>
+          <div className="inline-flex items-center justify-center rounded-lg bg-white/95 p-2.5">
+            <img src={logo} alt="Kalpana Associates & Construction" className="h-16 w-auto" />
           </div>
           <p className="text-sm text-white/70 leading-relaxed">
             Tamil Nadu's first BOQ-based construction company. Transparent pricing, branded materials, on-time delivery.

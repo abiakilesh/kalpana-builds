@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { buildWhatsAppLeadLink } from "@/lib/contact";

@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { GraduationCap, Award, Heart } from "lucide-react";
+import { useEffect, useState } from "react";
 import founderImg from "@/assets/founder.jpg";
 import { SectionHeader } from "@/components/SectionHeader";
 import { CTAButton } from "@/components/CTAButton";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/about")({
   head: () => ({
@@ -15,6 +17,14 @@ export const Route = createFileRoute("/about")({
 });
 
 function AboutPage() {
+  const [founder, setFounder] = useState<string>(founderImg);
+
+  useEffect(() => {
+    supabase.from("site_settings").select("value").eq("key", "founder_image").maybeSingle().then(({ data }) => {
+      if (data?.value) setFounder(data.value);
+    });
+  }, []);
+
   return (
     <>
       <section className="relative bg-gradient-hero text-white py-20 md:py-28">
@@ -29,7 +39,7 @@ function AboutPage() {
           <div className="relative">
             <div className="absolute -inset-4 bg-gradient-gold rounded-2xl opacity-20 blur-2xl" />
             <div className="relative rounded-2xl overflow-hidden shadow-premium">
-              <img src={founderImg} alt="Aravindhan, Founder" className="w-full h-full object-cover" loading="lazy" />
+              <img src={founder} alt="Aravindhan, Founder" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="absolute -bottom-5 -right-5 bg-gradient-gold rounded-xl px-5 py-3 shadow-gold">
               <div className="text-navy font-display text-2xl font-bold leading-tight">13+ Years</div>

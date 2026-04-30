@@ -21,6 +21,7 @@ const schema = z.object({
   phone: z.string().trim().regex(/^[+\d\s-]{7,20}$/, "Invalid phone"),
   location: z.string().trim().min(2).max(100),
   requirement: z.string().trim().min(2).max(100),
+  message: z.string().trim().max(1000).optional(),
 });
 
 const offices = [
@@ -40,6 +41,7 @@ function ContactPage() {
       phone: String(fd.get("phone") || ""),
       location: String(fd.get("location") || ""),
       requirement: String(fd.get("requirement") || ""),
+      message: String(fd.get("message") || ""),
     };
     const parsed = schema.safeParse(raw);
     if (!parsed.success) {
@@ -47,7 +49,14 @@ function ContactPage() {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from("leads").insert({ ...parsed.data, source: "contact" });
+    const { error } = await supabase.from("leads").insert({
+      name: parsed.data.name,
+      phone: parsed.data.phone,
+      location: parsed.data.location,
+      requirement: parsed.data.requirement,
+      message: parsed.data.message || null,
+      source: "contact",
+    });
     setSubmitting(false);
     if (error) {
       toast.error("Could not submit. Please call us directly.");
@@ -76,7 +85,8 @@ function ContactPage() {
               <input name="name" required placeholder="Your Name *" className="w-full px-4 py-3 rounded-md border border-input bg-background text-sm focus:ring-2 focus:ring-ring focus:outline-none" />
               <input name="phone" required type="tel" placeholder="Phone Number *" className="w-full px-4 py-3 rounded-md border border-input bg-background text-sm focus:ring-2 focus:ring-ring focus:outline-none" />
               <input name="location" required placeholder="Location *" className="w-full px-4 py-3 rounded-md border border-input bg-background text-sm focus:ring-2 focus:ring-ring focus:outline-none" />
-              <textarea name="requirement" required placeholder="Your Requirement (BOQ Construction / Joint Venture / Renovation / etc.) *" rows={4} className="w-full px-4 py-3 rounded-md border border-input bg-background text-sm focus:ring-2 focus:ring-ring focus:outline-none resize-none" />
+              <textarea name="requirement" required placeholder="Your Requirement (BOQ Construction / Joint Venture / Renovation / etc.) *" rows={3} className="w-full px-4 py-3 rounded-md border border-input bg-background text-sm focus:ring-2 focus:ring-ring focus:outline-none resize-none" />
+              <textarea name="message" placeholder="Additional Message (optional)" rows={3} maxLength={1000} className="w-full px-4 py-3 rounded-md border border-input bg-background text-sm focus:ring-2 focus:ring-ring focus:outline-none resize-none" />
               <button type="submit" disabled={submitting} className="w-full py-3 rounded-md bg-gradient-gold text-navy font-semibold text-sm shadow-gold hover:opacity-95 disabled:opacity-60 transition flex items-center justify-center gap-2">
                 <MessageCircle className="h-4 w-4" /> {submitting ? "Submitting…" : "Send via WhatsApp"}
               </button>

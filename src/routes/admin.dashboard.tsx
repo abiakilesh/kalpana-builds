@@ -232,7 +232,7 @@ function Dashboard() {
             <div className="p-4 flex flex-wrap gap-2 items-center justify-between border-b border-border">
               <div className="flex items-center gap-2 flex-1 min-w-[200px]">
                 <Search className="h-4 w-4 text-muted-foreground" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, location…" className="flex-1 bg-transparent text-sm focus:outline-none" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, location, message…" className="flex-1 bg-transparent text-sm focus:outline-none" />
               </div>
               <div className="flex gap-1">
                 {(["all", "new", "contacted"] as const).map((f) => (
@@ -261,27 +261,44 @@ function Dashboard() {
                   {filtered.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">No leads yet.</td></tr>
                   )}
-                  {filtered.map((l) => (
-                    <tr key={l.id} className={`border-t border-border ${l.contacted ? "bg-muted/20 text-muted-foreground" : ""}`}>
-                      <td className="px-4 py-3 font-medium">{l.name}</td>
-                      <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold">{l.phone}</a></td>
-                      <td className="px-4 py-3">{l.location ?? "—"}</td>
-                      <td className="px-4 py-3">{l.requirement}</td>
-                      <td className="px-4 py-3 max-w-[260px] whitespace-pre-wrap text-foreground/80">{l.message ?? "—"}</td>
+                  {filtered.map((l) => {
+                    const msgMatches = !!(search.trim() && l.message && l.message.toLowerCase().includes(search.trim().toLowerCase()));
+                    return (
+                    <tr key={l.id} className={`border-t border-border ${l.contacted ? "bg-muted/20 text-muted-foreground" : ""} ${msgMatches ? "bg-gold/5" : ""}`}>
+                      <td className="px-4 py-3 font-medium">
+                        <Highlight text={l.name} query={search} />
+                        {!l.contacted && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-gold" title="New" />}
+                      </td>
+                      <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold"><Highlight text={l.phone} query={search} /></a></td>
+                      <td className="px-4 py-3"><Highlight text={l.location ?? "—"} query={search} /></td>
+                      <td className="px-4 py-3"><Highlight text={l.requirement} query={search} /></td>
+                      <td className="px-4 py-3 max-w-[260px] whitespace-pre-wrap text-foreground/80">
+                        {l.message ? <Highlight text={l.message} query={search} /> : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-xs">{l.source ?? "—"}</td>
                       <td className="px-4 py-3 text-xs">{new Date(l.created_at).toLocaleString()}</td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-1">
-                          <button onClick={() => toggleContacted(l)} title={l.contacted ? "Mark new" : "Mark contacted"} className={`p-1.5 rounded ${l.contacted ? "text-gold" : "text-muted-foreground hover:text-gold"}`}>
-                            <CheckCircle2 className="h-4 w-4" />
+                        <div className="inline-flex gap-1 items-center">
+                          <button onClick={() => setSelectedLead(l)} title="View details" className="p-1.5 rounded text-muted-foreground hover:text-royal">
+                            <Eye className="h-4 w-4" />
                           </button>
+                          {l.contacted ? (
+                            <button onClick={() => toggleContacted(l)} title="Mark as new" className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold/15 text-gold text-[11px] font-semibold">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Contacted
+                            </button>
+                          ) : (
+                            <button onClick={() => toggleContacted(l)} title="Mark as contacted" className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-navy text-primary-foreground text-[11px] font-semibold hover:bg-navy/90">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Mark Contacted
+                            </button>
+                          )}
                           <button onClick={() => deleteLead(l.id)} title="Delete" className="p-1.5 rounded text-muted-foreground hover:text-destructive">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

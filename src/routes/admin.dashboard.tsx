@@ -73,15 +73,15 @@ function Dashboard() {
       if (filter === "contacted" && !l.contacted) return false;
       const q = search.trim().toLowerCase();
       if (!q) return true;
-      return [l.name, l.phone, l.location, l.requirement].filter(Boolean).some((v) => v!.toLowerCase().includes(q));
+      return [l.name, l.phone, l.location, l.requirement, l.message].filter(Boolean).some((v) => v!.toLowerCase().includes(q));
     });
   }, [leads, search, filter]);
 
   const exportCSV = () => {
     const rows = [
-      ["Name", "Phone", "Location", "Requirement", "Source", "Contacted", "Date"],
+      ["Name", "Phone", "Location", "Requirement", "Message", "Source", "Contacted", "Date"],
       ...filtered.map((l) => [
-        l.name, l.phone, l.location ?? "", l.requirement, l.source ?? "", l.contacted ? "Yes" : "No",
+        l.name, l.phone, l.location ?? "", l.requirement, l.message ?? "", l.source ?? "", l.contacted ? "Yes" : "No",
         new Date(l.created_at).toLocaleString(),
       ]),
     ];

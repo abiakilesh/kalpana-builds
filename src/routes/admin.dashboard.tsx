@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2 } from "lucide-react";
+import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2, Eye, Phone, MapPin, Clock, MessageSquare, Tag } from "lucide-react";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Kalpana Associates" }, { name: "robots", content: "noindex,nofollow" }] }),
@@ -33,6 +33,7 @@ function Dashboard() {
   const [founderPath, setFounderPath] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "new" | "contacted">("all");
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -68,13 +69,19 @@ function Dashboard() {
   };
 
   const filtered = useMemo(() => {
-    return leads.filter((l) => {
+    const q = search.trim().toLowerCase();
+    const matched = leads.filter((l) => {
       if (filter === "new" && l.contacted) return false;
       if (filter === "contacted" && !l.contacted) return false;
-      const q = search.trim().toLowerCase();
       if (!q) return true;
-      return [l.name, l.phone, l.location, l.requirement, l.message].filter(Boolean).some((v) => v!.toLowerCase().includes(q));
+      return [l.name, l.phone, l.location, l.requirement, l.message]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q));
     });
+    if (!q) return matched;
+    // Prioritize: message matches first, then others. Stable order preserved within groups.
+    const score = (l: Lead) => (l.message && l.message.toLowerCase().includes(q) ? 0 : 1);
+    return [...matched].sort((a, b) => score(a) - score(b));
   }, [leads, search, filter]);
 
   const exportCSV = () => {

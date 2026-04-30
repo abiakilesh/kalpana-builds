@@ -266,14 +266,14 @@ function Dashboard() {
                     return (
                     <tr key={l.id} className={`border-t border-border ${l.contacted ? "bg-muted/20 text-muted-foreground" : ""} ${msgMatches ? "bg-gold/5" : ""}`}>
                       <td className="px-4 py-3 font-medium">
-                        <Highlight text={l.name} query={search} />
+                        <HL text={l.name} query={search} />
                         {!l.contacted && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-gold" title="New" />}
                       </td>
-                      <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold"><Highlight text={l.phone} query={search} /></a></td>
-                      <td className="px-4 py-3"><Highlight text={l.location ?? "—"} query={search} /></td>
-                      <td className="px-4 py-3"><Highlight text={l.requirement} query={search} /></td>
+                      <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold"><HL text={l.phone} query={search} /></a></td>
+                      <td className="px-4 py-3"><HL text={l.location ?? "—"} query={search} /></td>
+                      <td className="px-4 py-3"><HL text={l.requirement} query={search} /></td>
                       <td className="px-4 py-3 max-w-[260px] whitespace-pre-wrap text-foreground/80">
-                        {l.message ? <Highlight text={l.message} query={search} /> : <span className="text-muted-foreground">—</span>}
+                        {l.message ? <HL text={l.message} query={search} /> : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3 text-xs">{l.source ?? "—"}</td>
                       <td className="px-4 py-3 text-xs">{new Date(l.created_at).toLocaleString()}</td>

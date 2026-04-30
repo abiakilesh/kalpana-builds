@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Lock, ShieldCheck } from "lucide-react";
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/admin/")({
   head: () => ({ meta: [{ title: "Admin Login — Kalpana Associates" }, { name: "robots", content: "noindex,nofollow" }] }),
   component: AdminLogin,
 });

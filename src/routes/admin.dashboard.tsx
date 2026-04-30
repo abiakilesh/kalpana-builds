@@ -295,12 +295,49 @@ function Dashboard() {
               {gallery.map((g) => (
                 <div key={g.id} className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-border bg-card">
                   <img src={g.image_url} alt={g.title ?? "Gallery"} loading="lazy" className="h-full w-full object-cover" />
-                  <button onClick={() => deleteImage(g)} className="absolute top-2 right-2 p-1.5 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition">
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <button onClick={() => renameImage(g)} title="Edit title" className="p-1.5 rounded-full bg-navy text-white">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => deleteImage(g)} title="Delete" className="p-1.5 rounded-full bg-destructive text-destructive-foreground">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                   {g.title && <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-navy/90 to-transparent text-white text-xs p-2 truncate">{g.title}</div>}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "founder" && (
+          <div className="bg-card rounded-2xl border border-border p-6 max-w-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <UserCircle2 className="h-5 w-5 text-gold" />
+              <h2 className="font-display text-xl font-bold text-navy">Founder Image</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-5">Shown on the About page. Recommended: square or 4:5 portrait, &gt; 800px.</p>
+
+            {founderUrl ? (
+              <div className="relative w-48 h-60 rounded-xl overflow-hidden border border-border mb-5 shadow-sm">
+                <img src={founderUrl} alt="Current founder" className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="w-48 h-60 rounded-xl border-2 border-dashed border-border flex items-center justify-center text-xs text-muted-foreground mb-5">
+                Default image in use
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <label className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-gold text-navy text-sm font-semibold shadow-gold cursor-pointer">
+                <Upload className="h-4 w-4" /> {founderUrl ? "Replace Image" : "Upload Image"}
+                <input type="file" accept="image/*" className="hidden" onChange={onFounderUpload} />
+              </label>
+              {founderUrl && (
+                <button onClick={deleteFounder} className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-destructive text-destructive-foreground text-sm font-semibold">
+                  <Trash2 className="h-4 w-4" /> Remove
+                </button>
+              )}
             </div>
           </div>
         )}

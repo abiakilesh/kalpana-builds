@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X } from "lucide-react";
+import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Kalpana Associates" }, { name: "robots", content: "noindex,nofollow" }] }),
@@ -15,6 +15,7 @@ interface Lead {
   phone: string;
   location: string | null;
   requirement: string;
+  message: string | null;
   source: string | null;
   contacted: boolean;
   created_at: string;
@@ -25,9 +26,11 @@ interface GalleryRow { id: string; image_url: string; storage_path: string | nul
 function Dashboard() {
   const navigate = useNavigate();
   const [authChecked, setAuthChecked] = useState(false);
-  const [tab, setTab] = useState<"leads" | "gallery">("leads");
+  const [tab, setTab] = useState<"leads" | "gallery" | "founder">("leads");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [gallery, setGallery] = useState<GalleryRow[]>([]);
+  const [founderUrl, setFounderUrl] = useState<string>("");
+  const [founderPath, setFounderPath] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "new" | "contacted">("all");
 

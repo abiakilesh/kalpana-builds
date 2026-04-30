@@ -11,8 +11,8 @@ export const Route = createFileRoute("/admin")({
 
 function AdminLogin() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("kpmkalpanaassociates@gmail.com");
+  const [password, setPassword] = useState("kalpanaassociates");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

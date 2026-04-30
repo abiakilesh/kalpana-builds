@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X } from "lucide-react";
+import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Kalpana Associates" }, { name: "robots", content: "noindex,nofollow" }] }),
@@ -15,6 +15,7 @@ interface Lead {
   phone: string;
   location: string | null;
   requirement: string;
+  message: string | null;
   source: string | null;
   contacted: boolean;
   created_at: string;
@@ -25,9 +26,11 @@ interface GalleryRow { id: string; image_url: string; storage_path: string | nul
 function Dashboard() {
   const navigate = useNavigate();
   const [authChecked, setAuthChecked] = useState(false);
-  const [tab, setTab] = useState<"leads" | "gallery">("leads");
+  const [tab, setTab] = useState<"leads" | "gallery" | "founder">("leads");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [gallery, setGallery] = useState<GalleryRow[]>([]);
+  const [founderUrl, setFounderUrl] = useState<string>("");
+  const [founderPath, setFounderPath] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "new" | "contacted">("all");
 
@@ -44,12 +47,19 @@ function Dashboard() {
   }, [navigate]);
 
   const loadAll = async () => {
-    const [{ data: l }, { data: g }] = await Promise.all([
+    const [{ data: l }, { data: g }, { data: s }] = await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(1000),
       supabase.from("gallery_images").select("*").order("created_at", { ascending: false }).limit(500),
+      supabase.from("site_settings").select("*").eq("key", "founder_image").maybeSingle(),
     ]);
     if (l) setLeads(l as Lead[]);
     if (g) setGallery(g as GalleryRow[]);
+    if (s?.value) {
+      setFounderUrl(s.value);
+      // try to derive storage path from public URL
+      const m = s.value.match(/\/gallery\/(.+)$/);
+      setFounderPath(m ? m[1] : "");
+    }
   };
 
   const logout = async () => {
@@ -63,15 +73,15 @@ function Dashboard() {
       if (filter === "contacted" && !l.contacted) return false;
       const q = search.trim().toLowerCase();
       if (!q) return true;
-      return [l.name, l.phone, l.location, l.requirement].filter(Boolean).some((v) => v!.toLowerCase().includes(q));
+      return [l.name, l.phone, l.location, l.requirement, l.message].filter(Boolean).some((v) => v!.toLowerCase().includes(q));
     });
   }, [leads, search, filter]);
 
   const exportCSV = () => {
     const rows = [
-      ["Name", "Phone", "Location", "Requirement", "Source", "Contacted", "Date"],
+      ["Name", "Phone", "Location", "Requirement", "Message", "Source", "Contacted", "Date"],
       ...filtered.map((l) => [
-        l.name, l.phone, l.location ?? "", l.requirement, l.source ?? "", l.contacted ? "Yes" : "No",
+        l.name, l.phone, l.location ?? "", l.requirement, l.message ?? "", l.source ?? "", l.contacted ? "Yes" : "No",
         new Date(l.created_at).toLocaleString(),
       ]),
     ];
@@ -128,6 +138,47 @@ function Dashboard() {
     toast.success("Image deleted");
   };
 
+  const renameImage = async (img: GalleryRow) => {
+    const next = prompt("New title:", img.title ?? "");
+    if (next === null) return;
+    const { error } = await supabase.from("gallery_images").update({ title: next }).eq("id", img.id);
+    if (error) return toast.error(error.message);
+    setGallery((prev) => prev.map((x) => x.id === img.id ? { ...x, title: next } : x));
+    toast.success("Title updated");
+  };
+
+  const onFounderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const t = toast.loading("Uploading founder image…");
+    // remove old file if existed
+    if (founderPath) await supabase.storage.from("gallery").remove([founderPath]);
+    const ext = file.name.split(".").pop();
+    const path = `founder-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("gallery").upload(path, file, { upsert: true });
+    if (upErr) { toast.dismiss(t); return toast.error(upErr.message); }
+    const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
+    const { error: usErr } = await supabase.from("site_settings").upsert({
+      key: "founder_image", value: pub.publicUrl, updated_at: new Date().toISOString(),
+    });
+    toast.dismiss(t);
+    if (usErr) return toast.error(usErr.message);
+    setFounderUrl(pub.publicUrl);
+    setFounderPath(path);
+    toast.success("Founder image updated");
+    e.target.value = "";
+  };
+
+  const deleteFounder = async () => {
+    if (!confirm("Remove founder image and revert to default?")) return;
+    if (founderPath) await supabase.storage.from("gallery").remove([founderPath]);
+    const { error } = await supabase.from("site_settings").delete().eq("key", "founder_image");
+    if (error) return toast.error(error.message);
+    setFounderUrl("");
+    setFounderPath("");
+    toast.success("Founder image removed");
+  };
+
   if (!authChecked) return <div className="min-h-[60vh] flex items-center justify-center text-muted-foreground">Loading…</div>;
 
   return (
@@ -161,7 +212,7 @@ function Dashboard() {
         </div>
 
         <div className="flex gap-1 mb-4 bg-card border border-border rounded-lg p-1 w-fit">
-          {(["leads", "gallery"] as const).map((t) => (
+          {(["leads", "gallery", "founder"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize ${tab === t ? "bg-navy text-primary-foreground" : "text-foreground/70 hover:bg-muted"}`}>{t}</button>
           ))}
         </div>
@@ -190,6 +241,7 @@ function Dashboard() {
                     <th className="text-left px-4 py-3">Phone</th>
                     <th className="text-left px-4 py-3">Location</th>
                     <th className="text-left px-4 py-3">Requirement</th>
+                    <th className="text-left px-4 py-3">Message</th>
                     <th className="text-left px-4 py-3">Source</th>
                     <th className="text-left px-4 py-3">Date</th>
                     <th className="text-right px-4 py-3">Actions</th>
@@ -197,7 +249,7 @@ function Dashboard() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No leads yet.</td></tr>
+                    <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">No leads yet.</td></tr>
                   )}
                   {filtered.map((l) => (
                     <tr key={l.id} className={`border-t border-border ${l.contacted ? "bg-muted/20 text-muted-foreground" : ""}`}>
@@ -205,6 +257,7 @@ function Dashboard() {
                       <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold">{l.phone}</a></td>
                       <td className="px-4 py-3">{l.location ?? "—"}</td>
                       <td className="px-4 py-3">{l.requirement}</td>
+                      <td className="px-4 py-3 max-w-[260px] whitespace-pre-wrap text-foreground/80">{l.message ?? "—"}</td>
                       <td className="px-4 py-3 text-xs">{l.source ?? "—"}</td>
                       <td className="px-4 py-3 text-xs">{new Date(l.created_at).toLocaleString()}</td>
                       <td className="px-4 py-3 text-right">
@@ -242,12 +295,49 @@ function Dashboard() {
               {gallery.map((g) => (
                 <div key={g.id} className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-border bg-card">
                   <img src={g.image_url} alt={g.title ?? "Gallery"} loading="lazy" className="h-full w-full object-cover" />
-                  <button onClick={() => deleteImage(g)} className="absolute top-2 right-2 p-1.5 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition">
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <button onClick={() => renameImage(g)} title="Edit title" className="p-1.5 rounded-full bg-navy text-white">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => deleteImage(g)} title="Delete" className="p-1.5 rounded-full bg-destructive text-destructive-foreground">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                   {g.title && <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-navy/90 to-transparent text-white text-xs p-2 truncate">{g.title}</div>}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "founder" && (
+          <div className="bg-card rounded-2xl border border-border p-6 max-w-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <UserCircle2 className="h-5 w-5 text-gold" />
+              <h2 className="font-display text-xl font-bold text-navy">Founder Image</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-5">Shown on the About page. Recommended: square or 4:5 portrait, &gt; 800px.</p>
+
+            {founderUrl ? (
+              <div className="relative w-48 h-60 rounded-xl overflow-hidden border border-border mb-5 shadow-sm">
+                <img src={founderUrl} alt="Current founder" className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="w-48 h-60 rounded-xl border-2 border-dashed border-border flex items-center justify-center text-xs text-muted-foreground mb-5">
+                Default image in use
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <label className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-gold text-navy text-sm font-semibold shadow-gold cursor-pointer">
+                <Upload className="h-4 w-4" /> {founderUrl ? "Replace Image" : "Upload Image"}
+                <input type="file" accept="image/*" className="hidden" onChange={onFounderUpload} />
+              </label>
+              {founderUrl && (
+                <button onClick={deleteFounder} className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-destructive text-destructive-foreground text-sm font-semibold">
+                  <Trash2 className="h-4 w-4" /> Remove
+                </button>
+              )}
             </div>
           </div>
         )}

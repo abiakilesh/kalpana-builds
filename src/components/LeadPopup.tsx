@@ -1,24 +1,33 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { buildWhatsAppLeadLink } from "@/lib/contact";
 import { toast } from "sonner";
 import { z } from "zod";
 
 const SESSION_KEY = "ka_lead_popup_shown";
+const MESSAGE_MAX = 500;
 
 const schema = z.object({
   name: z.string().trim().min(2, "Enter your name").max(100),
   phone: z.string().trim().regex(/^[+\d\s-]{7,20}$/, "Enter a valid phone"),
   location: z.string().trim().min(2, "Enter your location").max(100),
   requirement: z.enum(["Construction", "Joint Venture"]),
-  message: z.string().trim().max(1000).optional(),
+  message: z
+    .string()
+    .trim()
+    .max(MESSAGE_MAX, `Message must be ${MESSAGE_MAX} characters or less`)
+    .optional()
+    .or(z.literal("")),
 });
+
+type Status = "idle" | "submitting" | "redirecting";
 
 export function LeadPopup() {
   const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
   const [done, setDone] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -34,6 +43,7 @@ export function LeadPopup() {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (status !== "idle") return;
     const fd = new FormData(e.currentTarget);
     const raw = {
       name: String(fd.get("name") || ""),
@@ -47,25 +57,32 @@ export function LeadPopup() {
       toast.error(parsed.error.issues[0]?.message ?? "Please check the form");
       return;
     }
-    setSubmitting(true);
+    setStatus("submitting");
     const { error } = await supabase.from("leads").insert({
       name: parsed.data.name,
       phone: parsed.data.phone,
       location: parsed.data.location,
       requirement: parsed.data.requirement,
-      message: parsed.data.message || null,
+      message: parsed.data.message ? parsed.data.message : null,
       source: "popup",
     });
-    setSubmitting(false);
     if (error) {
+      setStatus("idle");
       toast.error("Could not submit. Please try calling us.");
       return;
     }
-    setDone(true);
-    toast.success("Thanks! We will contact you shortly.");
+    setStatus("redirecting");
+    toast.success("Thanks! Opening WhatsApp…");
     const url = buildWhatsAppLeadLink(parsed.data);
-    setTimeout(() => window.open(url, "_blank"), 600);
+    setTimeout(() => {
+      window.open(url, "_blank");
+      setDone(true);
+      setStatus("idle");
+    }, 900);
   };
+
+  const remaining = MESSAGE_MAX - message.length;
+  const overLimit = remaining < 0;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-navy/60 backdrop-blur-sm animate-float-in">
@@ -95,25 +112,42 @@ export function LeadPopup() {
           </div>
         ) : (
           <form onSubmit={onSubmit} className="p-6 space-y-3">
-            <input name="name" placeholder="Your Name *" required className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            <input name="phone" placeholder="Phone Number *" required type="tel" className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            <input name="location" placeholder="Location *" required className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            <select name="requirement" className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <input name="name" placeholder="Your Name *" required disabled={status !== "idle"} className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" />
+            <input name="phone" placeholder="Phone Number *" required type="tel" disabled={status !== "idle"} className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" />
+            <input name="location" placeholder="Location *" required disabled={status !== "idle"} className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" />
+            <select name="requirement" disabled={status !== "idle"} className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60">
               <option value="Construction">Construction</option>
               <option value="Joint Venture">Joint Venture</option>
             </select>
-            <textarea name="message" placeholder="Message (optional)" rows={3} maxLength={1000} className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
+            <div>
+              <textarea
+                name="message"
+                placeholder="Message (optional)"
+                rows={3}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                disabled={status !== "idle"}
+                aria-invalid={overLimit}
+                className={`w-full px-4 py-2.5 rounded-md border bg-background text-sm focus:outline-none focus:ring-2 resize-none disabled:opacity-60 ${overLimit ? "border-destructive focus:ring-destructive" : "border-input focus:ring-ring"}`}
+              />
+              <div className={`mt-1 text-[11px] text-right ${overLimit ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+                {remaining} / {MESSAGE_MAX}
+              </div>
+            </div>
             <button
               type="submit"
-              disabled={submitting}
-              className="w-full py-3 rounded-md bg-gradient-gold text-navy font-semibold text-sm hover:opacity-95 disabled:opacity-60 shadow-gold transition"
+              disabled={status !== "idle" || overLimit}
+              className="w-full py-3 rounded-md bg-gradient-gold text-navy font-semibold text-sm hover:opacity-95 disabled:opacity-60 shadow-gold transition flex items-center justify-center gap-2"
             >
-              {submitting ? "Submitting…" : "Get Free Consultation"}
+              {status === "submitting" && <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</>}
+              {status === "redirecting" && <><Loader2 className="h-4 w-4 animate-spin" /> Opening WhatsApp…</>}
+              {status === "idle" && "Get Free Consultation"}
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="w-full py-2 text-xs text-muted-foreground hover:text-foreground"
+              disabled={status !== "idle"}
+              className="w-full py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
               Skip for now
             </button>

@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2 } from "lucide-react";
+import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2, Eye, Phone, MapPin, Clock, MessageSquare, Tag } from "lucide-react";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Kalpana Associates" }, { name: "robots", content: "noindex,nofollow" }] }),
@@ -33,6 +33,7 @@ function Dashboard() {
   const [founderPath, setFounderPath] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "new" | "contacted">("all");
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -68,13 +69,19 @@ function Dashboard() {
   };
 
   const filtered = useMemo(() => {
-    return leads.filter((l) => {
+    const q = search.trim().toLowerCase();
+    const matched = leads.filter((l) => {
       if (filter === "new" && l.contacted) return false;
       if (filter === "contacted" && !l.contacted) return false;
-      const q = search.trim().toLowerCase();
       if (!q) return true;
-      return [l.name, l.phone, l.location, l.requirement, l.message].filter(Boolean).some((v) => v!.toLowerCase().includes(q));
+      return [l.name, l.phone, l.location, l.requirement, l.message]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q));
     });
+    if (!q) return matched;
+    // Prioritize: message matches first, then others. Stable order preserved within groups.
+    const score = (l: Lead) => (l.message && l.message.toLowerCase().includes(q) ? 0 : 1);
+    return [...matched].sort((a, b) => score(a) - score(b));
   }, [leads, search, filter]);
 
   const exportCSV = () => {
@@ -89,15 +96,18 @@ function Dashboard() {
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.href = url; a.download = `leads-${filter}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const toggleContacted = async (l: Lead) => {
-    const { error } = await supabase.from("leads").update({ contacted: !l.contacted }).eq("id", l.id);
+    const next = !l.contacted;
+    const { error } = await supabase.from("leads").update({ contacted: next }).eq("id", l.id);
     if (error) return toast.error(error.message);
-    setLeads((prev) => prev.map((x) => x.id === l.id ? { ...x, contacted: !l.contacted } : x));
+    setLeads((prev) => prev.map((x) => x.id === l.id ? { ...x, contacted: next } : x));
+    setSelectedLead((curr) => curr && curr.id === l.id ? { ...curr, contacted: next } : curr);
+    toast.success(next ? "Marked as contacted" : "Marked as new");
   };
 
   const deleteLead = async (id: string) => {
@@ -222,7 +232,7 @@ function Dashboard() {
             <div className="p-4 flex flex-wrap gap-2 items-center justify-between border-b border-border">
               <div className="flex items-center gap-2 flex-1 min-w-[200px]">
                 <Search className="h-4 w-4 text-muted-foreground" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, location…" className="flex-1 bg-transparent text-sm focus:outline-none" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, location, message…" className="flex-1 bg-transparent text-sm focus:outline-none" />
               </div>
               <div className="flex gap-1">
                 {(["all", "new", "contacted"] as const).map((f) => (
@@ -251,27 +261,44 @@ function Dashboard() {
                   {filtered.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">No leads yet.</td></tr>
                   )}
-                  {filtered.map((l) => (
-                    <tr key={l.id} className={`border-t border-border ${l.contacted ? "bg-muted/20 text-muted-foreground" : ""}`}>
-                      <td className="px-4 py-3 font-medium">{l.name}</td>
-                      <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold">{l.phone}</a></td>
-                      <td className="px-4 py-3">{l.location ?? "—"}</td>
-                      <td className="px-4 py-3">{l.requirement}</td>
-                      <td className="px-4 py-3 max-w-[260px] whitespace-pre-wrap text-foreground/80">{l.message ?? "—"}</td>
+                  {filtered.map((l) => {
+                    const msgMatches = !!(search.trim() && l.message && l.message.toLowerCase().includes(search.trim().toLowerCase()));
+                    return (
+                    <tr key={l.id} className={`border-t border-border ${l.contacted ? "bg-muted/20 text-muted-foreground" : ""} ${msgMatches ? "bg-gold/5" : ""}`}>
+                      <td className="px-4 py-3 font-medium">
+                        <HL text={l.name} query={search} />
+                        {!l.contacted && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-gold" title="New" />}
+                      </td>
+                      <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold"><HL text={l.phone} query={search} /></a></td>
+                      <td className="px-4 py-3"><HL text={l.location ?? "—"} query={search} /></td>
+                      <td className="px-4 py-3"><HL text={l.requirement} query={search} /></td>
+                      <td className="px-4 py-3 max-w-[260px] whitespace-pre-wrap text-foreground/80">
+                        {l.message ? <HL text={l.message} query={search} /> : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-xs">{l.source ?? "—"}</td>
                       <td className="px-4 py-3 text-xs">{new Date(l.created_at).toLocaleString()}</td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-1">
-                          <button onClick={() => toggleContacted(l)} title={l.contacted ? "Mark new" : "Mark contacted"} className={`p-1.5 rounded ${l.contacted ? "text-gold" : "text-muted-foreground hover:text-gold"}`}>
-                            <CheckCircle2 className="h-4 w-4" />
+                        <div className="inline-flex gap-1 items-center">
+                          <button onClick={() => setSelectedLead(l)} title="View details" className="p-1.5 rounded text-muted-foreground hover:text-royal">
+                            <Eye className="h-4 w-4" />
                           </button>
+                          {l.contacted ? (
+                            <button onClick={() => toggleContacted(l)} title="Mark as new" className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold/15 text-gold text-[11px] font-semibold">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Contacted
+                            </button>
+                          ) : (
+                            <button onClick={() => toggleContacted(l)} title="Mark as contacted" className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-navy text-primary-foreground text-[11px] font-semibold hover:bg-navy/90">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Mark Contacted
+                            </button>
+                          )}
                           <button onClick={() => deleteLead(l.id)} title="Delete" className="p-1.5 rounded text-muted-foreground hover:text-destructive">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -342,6 +369,122 @@ function Dashboard() {
           </div>
         )}
       </div>
+
+      <LeadDetailsModal
+        lead={selectedLead}
+        onClose={() => setSelectedLead(null)}
+        onToggleContacted={toggleContacted}
+        onDelete={async (id) => { await deleteLead(id); setSelectedLead(null); }}
+      />
     </section>
   );
 }
+
+function HL({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  if (!q) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const ql = q.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  let idx = lower.indexOf(ql, i);
+  let key = 0;
+  while (idx !== -1) {
+    if (idx > i) parts.push(<span key={key++}>{text.slice(i, idx)}</span>);
+    parts.push(<mark key={key++} className="bg-gold/40 text-navy rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>);
+    i = idx + q.length;
+    idx = lower.indexOf(ql, i);
+  }
+  if (i < text.length) parts.push(<span key={key++}>{text.slice(i)}</span>);
+  return <>{parts}</>;
+}
+
+function LeadDetailsModal({
+  lead, onClose, onToggleContacted, onDelete,
+}: {
+  lead: Lead | null;
+  onClose: () => void;
+  onToggleContacted: (l: Lead) => void;
+  onDelete: (id: string) => void;
+}) {
+  if (!lead) return null;
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 bg-navy/60 backdrop-blur-sm animate-float-in" onClick={onClose}>
+      <div className="relative w-full max-w-lg rounded-2xl bg-card shadow-premium overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} aria-label="Close" className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-background/80 hover:bg-background text-foreground/70">
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="bg-gradient-hero text-white px-6 pt-7 pb-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${lead.contacted ? "bg-gold/95 text-navy" : "bg-white/20 text-white"}`}>
+              {lead.contacted ? <><CheckCircle2 className="h-3 w-3" /> Contacted</> : "New Lead"}
+            </span>
+            {lead.source && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/15 text-white/90">
+                <Tag className="h-3 w-3" /> {lead.source}
+              </span>
+            )}
+          </div>
+          <h3 className="font-display text-2xl font-bold leading-tight">{lead.name}</h3>
+          <p className="text-white/75 text-xs mt-1 flex items-center gap-1.5"><Clock className="h-3 w-3" /> {new Date(lead.created_at).toLocaleString()}</p>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <Field icon={<Phone className="h-4 w-4 text-gold" />} label="Phone">
+            <a href={`tel:${lead.phone}`} className="text-royal hover:text-gold font-medium">{lead.phone}</a>
+          </Field>
+          <Field icon={<MapPin className="h-4 w-4 text-gold" />} label="Location">
+            <span>{lead.location ?? "—"}</span>
+          </Field>
+          <Field icon={<Tag className="h-4 w-4 text-gold" />} label="Requirement">
+            <span className="font-medium text-navy">{lead.requirement}</span>
+          </Field>
+          <Field icon={<MessageSquare className="h-4 w-4 text-gold" />} label="Message">
+            {lead.message ? (
+              <p className="whitespace-pre-wrap text-foreground/85">{lead.message}</p>
+            ) : (
+              <span className="text-muted-foreground italic">No message provided</span>
+            )}
+          </Field>
+
+          <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
+            <button
+              onClick={() => onToggleContacted(lead)}
+              className={`flex-1 min-w-[160px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold ${
+                lead.contacted ? "bg-muted text-foreground hover:bg-muted/70" : "bg-gradient-gold text-navy shadow-gold"
+              }`}
+            >
+              <CheckCircle2 className="h-4 w-4" /> {lead.contacted ? "Mark as New" : "Mark as Contacted"}
+            </button>
+            <a
+              href={`tel:${lead.phone}`}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold bg-navy text-primary-foreground hover:bg-navy/90"
+            >
+              <Phone className="h-4 w-4" /> Call
+            </a>
+            <button
+              onClick={() => onDelete(lead.id)}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <div className="w-8 h-8 rounded-lg bg-muted flex-shrink-0 flex items-center justify-center">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className="text-sm mt-0.5">{children}</div>
+      </div>
+    </div>
+  );
+}
+

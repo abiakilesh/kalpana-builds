@@ -39,7 +39,15 @@ function AboutPage() {
           <div className="relative">
             <div className="absolute -inset-4 bg-gradient-gold rounded-2xl opacity-20 blur-2xl" />
             <div className="relative rounded-2xl overflow-hidden shadow-premium">
-              <img src={founder} alt="Aravindhan, Founder" className="w-full h-full object-cover" loading="lazy" />
+              <img
+                src={founder}
+                alt="Aravindhan, Founder"
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  if (e.currentTarget.src !== founderImg) e.currentTarget.src = founderImg;
+                }}
+              />
             </div>
             <div className="absolute -bottom-5 -right-5 bg-gradient-gold rounded-xl px-5 py-3 shadow-gold">
               <div className="text-navy font-display text-2xl font-bold leading-tight">13+ Years</div>

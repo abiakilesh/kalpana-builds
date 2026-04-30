@@ -138,6 +138,47 @@ function Dashboard() {
     toast.success("Image deleted");
   };
 
+  const renameImage = async (img: GalleryRow) => {
+    const next = prompt("New title:", img.title ?? "");
+    if (next === null) return;
+    const { error } = await supabase.from("gallery_images").update({ title: next }).eq("id", img.id);
+    if (error) return toast.error(error.message);
+    setGallery((prev) => prev.map((x) => x.id === img.id ? { ...x, title: next } : x));
+    toast.success("Title updated");
+  };
+
+  const onFounderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const t = toast.loading("Uploading founder image…");
+    // remove old file if existed
+    if (founderPath) await supabase.storage.from("gallery").remove([founderPath]);
+    const ext = file.name.split(".").pop();
+    const path = `founder-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("gallery").upload(path, file, { upsert: true });
+    if (upErr) { toast.dismiss(t); return toast.error(upErr.message); }
+    const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
+    const { error: usErr } = await supabase.from("site_settings").upsert({
+      key: "founder_image", value: pub.publicUrl, updated_at: new Date().toISOString(),
+    });
+    toast.dismiss(t);
+    if (usErr) return toast.error(usErr.message);
+    setFounderUrl(pub.publicUrl);
+    setFounderPath(path);
+    toast.success("Founder image updated");
+    e.target.value = "";
+  };
+
+  const deleteFounder = async () => {
+    if (!confirm("Remove founder image and revert to default?")) return;
+    if (founderPath) await supabase.storage.from("gallery").remove([founderPath]);
+    const { error } = await supabase.from("site_settings").delete().eq("key", "founder_image");
+    if (error) return toast.error(error.message);
+    setFounderUrl("");
+    setFounderPath("");
+    toast.success("Founder image removed");
+  };
+
   if (!authChecked) return <div className="min-h-[60vh] flex items-center justify-center text-muted-foreground">Loading…</div>;
 
   return (
@@ -171,7 +212,7 @@ function Dashboard() {
         </div>
 
         <div className="flex gap-1 mb-4 bg-card border border-border rounded-lg p-1 w-fit">
-          {(["leads", "gallery"] as const).map((t) => (
+          {(["leads", "gallery", "founder"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize ${tab === t ? "bg-navy text-primary-foreground" : "text-foreground/70 hover:bg-muted"}`}>{t}</button>
           ))}
         </div>
@@ -200,6 +241,7 @@ function Dashboard() {
                     <th className="text-left px-4 py-3">Phone</th>
                     <th className="text-left px-4 py-3">Location</th>
                     <th className="text-left px-4 py-3">Requirement</th>
+                    <th className="text-left px-4 py-3">Message</th>
                     <th className="text-left px-4 py-3">Source</th>
                     <th className="text-left px-4 py-3">Date</th>
                     <th className="text-right px-4 py-3">Actions</th>
@@ -207,7 +249,7 @@ function Dashboard() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No leads yet.</td></tr>
+                    <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">No leads yet.</td></tr>
                   )}
                   {filtered.map((l) => (
                     <tr key={l.id} className={`border-t border-border ${l.contacted ? "bg-muted/20 text-muted-foreground" : ""}`}>
@@ -215,6 +257,7 @@ function Dashboard() {
                       <td className="px-4 py-3"><a href={`tel:${l.phone}`} className="text-royal hover:text-gold">{l.phone}</a></td>
                       <td className="px-4 py-3">{l.location ?? "—"}</td>
                       <td className="px-4 py-3">{l.requirement}</td>
+                      <td className="px-4 py-3 max-w-[260px] whitespace-pre-wrap text-foreground/80">{l.message ?? "—"}</td>
                       <td className="px-4 py-3 text-xs">{l.source ?? "—"}</td>
                       <td className="px-4 py-3 text-xs">{new Date(l.created_at).toLocaleString()}</td>
                       <td className="px-4 py-3 text-right">

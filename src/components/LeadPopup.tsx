@@ -12,6 +12,7 @@ const schema = z.object({
   phone: z.string().trim().regex(/^[+\d\s-]{7,20}$/, "Enter a valid phone"),
   location: z.string().trim().min(2, "Enter your location").max(100),
   requirement: z.enum(["Construction", "Joint Venture"]),
+  message: z.string().trim().max(1000).optional(),
 });
 
 export function LeadPopup() {
@@ -39,6 +40,7 @@ export function LeadPopup() {
       phone: String(fd.get("phone") || ""),
       location: String(fd.get("location") || ""),
       requirement: String(fd.get("requirement") || "Construction"),
+      message: String(fd.get("message") || ""),
     };
     const parsed = schema.safeParse(raw);
     if (!parsed.success) {
@@ -51,6 +53,7 @@ export function LeadPopup() {
       phone: parsed.data.phone,
       location: parsed.data.location,
       requirement: parsed.data.requirement,
+      message: parsed.data.message || null,
       source: "popup",
     });
     setSubmitting(false);
@@ -99,6 +102,7 @@ export function LeadPopup() {
               <option value="Construction">Construction</option>
               <option value="Joint Venture">Joint Venture</option>
             </select>
+            <textarea name="message" placeholder="Message (optional)" rows={3} maxLength={1000} className="w-full px-4 py-2.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
             <button
               type="submit"
               disabled={submitting}

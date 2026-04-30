@@ -96,15 +96,18 @@ function Dashboard() {
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.href = url; a.download = `leads-${filter}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const toggleContacted = async (l: Lead) => {
-    const { error } = await supabase.from("leads").update({ contacted: !l.contacted }).eq("id", l.id);
+    const next = !l.contacted;
+    const { error } = await supabase.from("leads").update({ contacted: next }).eq("id", l.id);
     if (error) return toast.error(error.message);
-    setLeads((prev) => prev.map((x) => x.id === l.id ? { ...x, contacted: !l.contacted } : x));
+    setLeads((prev) => prev.map((x) => x.id === l.id ? { ...x, contacted: next } : x));
+    setSelectedLead((curr) => curr && curr.id === l.id ? { ...curr, contacted: next } : curr);
+    toast.success(next ? "Marked as contacted" : "Marked as new");
   };
 
   const deleteLead = async (id: string) => {

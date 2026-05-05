@@ -151,14 +151,17 @@ function PackageCard({
         </div>
       </div>
 
-      <div className="p-4 space-y-2 flex-1 max-h-[600px] overflow-y-auto">
+      <div className="p-4 space-y-2 flex-1">
         {sections.map((s) => {
-          const open = openSection === `${pkgIndex}-${s.title}`;
+          const open = openSection === s.title;
           return (
-            <div key={s.title} className="border border-border rounded-lg">
+            <div
+              key={s.title}
+              className={`border rounded-lg transition ${open ? "border-gold bg-gold/5" : "border-border"}`}
+            >
               <button
                 type="button"
-                onClick={() => onToggle(`${pkgIndex}-${s.title}`)}
+                onClick={() => onToggle(s.title)}
                 className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-semibold text-navy hover:bg-muted/60 transition rounded-lg"
               >
                 <span>{s.title}</span>

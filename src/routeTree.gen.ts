@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ServicesRouteImport } from './routes/services'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as JointVentureRouteImport } from './routes/joint-venture'
 import { Route as GalleryRouteImport } from './routes/gallery'
 import { Route as ContactRouteImport } from './routes/contact'
@@ -22,6 +23,11 @@ import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 const ServicesRoute = ServicesRouteImport.update({
   id: '/services',
   path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JointVentureRoute = JointVentureRouteImport.update({
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/gallery': typeof GalleryRoute
   '/joint-venture': typeof JointVentureRoute
+  '/pricing': typeof PricingRoute
   '/services': typeof ServicesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/': typeof AdminIndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/gallery': typeof GalleryRoute
   '/joint-venture': typeof JointVentureRoute
+  '/pricing': typeof PricingRoute
   '/services': typeof ServicesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin': typeof AdminIndexRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/gallery': typeof GalleryRoute
   '/joint-venture': typeof JointVentureRoute
+  '/pricing': typeof PricingRoute
   '/services': typeof ServicesRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/': typeof AdminIndexRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/gallery'
     | '/joint-venture'
+    | '/pricing'
     | '/services'
     | '/admin/dashboard'
     | '/admin/'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/gallery'
     | '/joint-venture'
+    | '/pricing'
     | '/services'
     | '/admin/dashboard'
     | '/admin'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/gallery'
     | '/joint-venture'
+    | '/pricing'
     | '/services'
     | '/admin/dashboard'
     | '/admin/'
@@ -140,6 +152,7 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   GalleryRoute: typeof GalleryRoute
   JointVentureRoute: typeof JointVentureRoute
+  PricingRoute: typeof PricingRoute
   ServicesRoute: typeof ServicesRoute
 }
 
@@ -150,6 +163,13 @@ declare module '@tanstack/react-router' {
       path: '/services'
       fullPath: '/services'
       preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/joint-venture': {
@@ -230,6 +250,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   GalleryRoute: GalleryRoute,
   JointVentureRoute: JointVentureRoute,
+  PricingRoute: PricingRoute,
   ServicesRoute: ServicesRoute,
 }
 export const routeTree = rootRouteImport

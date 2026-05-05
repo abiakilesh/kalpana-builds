@@ -61,6 +61,7 @@ export function Footer() {
           <h4 className="text-sm font-semibold uppercase tracking-wider text-gold mb-4">Explore</h4>
           <ul className="space-y-2 text-sm text-white/75">
             <li><Link to="/services" className="hover:text-gold">Services</Link></li>
+            <li><Link to="/pricing" className="hover:text-gold">Pricing</Link></li>
             <li><Link to="/joint-venture" className="hover:text-gold">Joint Venture</Link></li>
             <li><Link to="/gallery" className="hover:text-gold">Gallery</Link></li>
             <li><Link to="/about" className="hover:text-gold">About Founder</Link></li>

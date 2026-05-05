@@ -25,9 +25,24 @@ const schema = z.object({
 });
 
 const offices = [
-  { city: "Chennai (Head Office)", line: "Mangadu, Chennai – 600122, Tamil Nadu" },
-  { city: "Kanchipuram", line: "Branch Office – Kanchipuram, Tamil Nadu" },
-  { city: "Mangadu", line: "Site Office – Mangadu Region" },
+  {
+    city: "Corporate Office — Chennai",
+    lines: [
+      "New No: 30 & Old No: 11,",
+      "AKR Corniche Center, 2nd Floor,",
+      "Second Line Beach, George Town,",
+      "Chennai - 600 001.",
+      "Landmark: Beach station GT Court Backside",
+    ],
+  },
+  {
+    city: "Branch Office — Kanchipuram",
+    lines: ["58B, SVN Pillai Street,", "Kanchipuram - 631502"],
+  },
+  {
+    city: "Branch Office — Mangadu",
+    lines: ["94/18, Palaneeswarer Koil Street,", "Mangadu, Chennai - 600122."],
+  },
 ];
 
 function ContactPage() {

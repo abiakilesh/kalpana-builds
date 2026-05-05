@@ -135,7 +135,9 @@ function ContactPage() {
                   <MapPin className="h-5 w-5 text-gold flex-shrink-0 mt-0.5" />
                   <div>
                     <div className="font-semibold text-navy">{o.city}</div>
-                    <div className="text-sm text-muted-foreground">{o.line}</div>
+                    {o.lines.map((l) => (
+                      <div key={l} className="text-sm text-muted-foreground leading-relaxed">{l}</div>
+                    ))}
                   </div>
                 </div>
               ))}

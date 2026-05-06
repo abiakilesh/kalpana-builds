@@ -151,7 +151,7 @@ function ContactPage() {
           <div className="rounded-2xl overflow-hidden border border-border shadow-premium">
             <iframe
               title="Kalpana Associates location"
-              src="https://maps.google.com/maps?q=AKR+Corniche+Center+Second+Line+Beach+George+Town+Chennai&output=embed"
+              src="https://maps.google.com/maps?q=Kalpana+Associates+%26+Construction&ll=13.0924207,80.2909519&z=17&output=embed"
               width="100%"
               height="380"
               style={{ border: 0 }}

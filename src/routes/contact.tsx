@@ -151,7 +151,7 @@ function ContactPage() {
           <div className="rounded-2xl overflow-hidden border border-border shadow-premium">
             <iframe
               title="Kalpana Associates location"
-              src="https://www.google.com/maps?q=Mangadu,Chennai&output=embed"
+              src="https://www.google.com/maps?q=AKR+Corniche+Center,+Second+Line+Beach,+George+Town,+Chennai+600001&output=embed"
               width="100%"
               height="380"
               style={{ border: 0 }}

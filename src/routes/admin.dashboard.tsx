@@ -21,7 +21,26 @@ interface Lead {
   created_at: string;
 }
 
-interface GalleryRow { id: string; image_url: string; storage_path: string | null; title: string | null }
+interface GalleryRow { id: string; image_url: string; storage_path: string | null; title: string | null; category: string | null; created_at?: string }
+
+type UploadStatus = "pending" | "uploading" | "done" | "failed";
+interface UploadItem { id: string; name: string; size: number; status: UploadStatus; error?: string; attempts: number }
+
+const MAX_IMAGES = 300;
+const MAX_TOTAL_BYTES = 500 * 1024 * 1024; // 500 MB
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+async function withRetry<T>(fn: () => Promise<T>, max = 3, baseMs = 500): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < max; i++) {
+    try { return await fn(); } catch (e) {
+      lastErr = e;
+      if (i < max - 1) await new Promise((r) => setTimeout(r, Math.pow(2, i) * baseMs + Math.random() * 200));
+    }
+  }
+  throw lastErr;
+}
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -29,11 +48,15 @@ function Dashboard() {
   const [tab, setTab] = useState<"leads" | "gallery" | "founder">("leads");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [gallery, setGallery] = useState<GalleryRow[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(true);
   const [founderUrl, setFounderUrl] = useState<string>("");
   const [founderPath, setFounderPath] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "new" | "contacted">("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<GalleryRow | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

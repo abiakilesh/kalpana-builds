@@ -57,21 +57,34 @@ function GalleryPage() {
 
       <section className="py-16 md:py-20">
         <div className="mx-auto max-w-7xl px-4 md:px-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {images.map((img, i) => (
-              <button
-                key={img.id}
-                onClick={() => setActive(img)}
-                className="group relative overflow-hidden rounded-xl bg-card border border-border aspect-[4/3] animate-float-in"
-                style={{ animationDelay: `${i * 50}ms` }}
-              >
-                <img src={img.image_url} alt={img.title ?? "Project"} loading="lazy" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                <div className="absolute inset-0 bg-gradient-to-t from-navy/85 via-navy/0 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-5">
-                  <div className="text-white font-display text-lg font-bold">{img.title ?? "Project"}</div>
-                </div>
-              </button>
-            ))}
-          </div>
+          {loading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="aspect-[4/3] rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {images.map((img, i) => (
+                <button
+                  key={img.id}
+                  onClick={() => setActive(img)}
+                  className="group relative overflow-hidden rounded-xl bg-card border border-border aspect-[4/3] animate-float-in"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  <img src={img.image_url} alt={img.title ?? "Project"} loading="lazy" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                  {img.category && (
+                    <span className="absolute top-3 left-3 inline-flex items-center px-2 py-0.5 rounded-full bg-gold/95 text-navy text-[10px] font-bold uppercase tracking-wider">
+                      {img.category}
+                    </span>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-navy/85 via-navy/0 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-5">
+                    <div className="text-white font-display text-lg font-bold">{img.title ?? "Project"}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

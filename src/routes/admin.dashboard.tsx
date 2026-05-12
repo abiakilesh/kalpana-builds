@@ -345,11 +345,11 @@ function Dashboard() {
         {tab === "gallery" && (
           <div className="space-y-4">
             <div className="bg-card rounded-2xl border border-border p-5">
-              <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-8 cursor-pointer hover:border-gold/40 hover:bg-muted/30 transition">
-                <Upload className="h-8 w-8 text-gold" />
-                <span className="font-semibold text-navy">Upload Images</span>
-                <span className="text-xs text-muted-foreground">Multiple files supported · JPG, PNG, WebP</span>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={onUpload} />
+              <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-8 transition ${uploading ? "opacity-60 cursor-wait" : "cursor-pointer hover:border-gold/40 hover:bg-muted/30"}`}>
+                <Upload className={`h-8 w-8 text-gold ${uploading ? "animate-pulse" : ""}`} />
+                <span className="font-semibold text-navy">{uploading ? "Uploading…" : "Upload Images"}</span>
+                <span className="text-xs text-muted-foreground">JPG, PNG, WebP · up to 10MB each</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading} className="hidden" onChange={onUpload} />
               </label>
             </div>
             <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">

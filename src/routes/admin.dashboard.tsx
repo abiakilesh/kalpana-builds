@@ -144,78 +144,159 @@ function Dashboard() {
 
   const [uploading, setUploading] = useState(false);
 
+  const updateQueueItem = (id: string, patch: Partial<UploadItem>) =>
+    setUploadQueue((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
     const files = Array.from(input.files ?? []);
     if (!files.length) return;
 
-    const ALLOWED = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    const MAX = 10 * 1024 * 1024; // 10MB
+    // Pre-validate type and size
     const valid: File[] = [];
     for (const f of files) {
-      if (!ALLOWED.includes(f.type)) { toast.error(`${f.name}: only JPG, PNG, WebP allowed`); continue; }
-      if (f.size > MAX) { toast.error(`${f.name}: exceeds 10MB`); continue; }
+      if (!ALLOWED_TYPES.includes(f.type)) { toast.error(`${f.name}: only JPG, PNG, WebP allowed`); continue; }
+      if (f.size > MAX_FILE_BYTES) { toast.error(`${f.name}: exceeds 10MB`); continue; }
       valid.push(f);
     }
     if (!valid.length) { input.value = ""; return; }
 
-    setUploading(true);
-    const t = toast.loading(`Uploading ${valid.length} image(s)…`);
-    let ok = 0;
-    const newRows: GalleryRow[] = [];
-    for (const file of valid) {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-      const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("gallery")
-        .upload(path, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
-      if (upErr) { toast.error(`${file.name}: ${upErr.message}`); continue; }
-
-      const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
-      const title = file.name.replace(/\.[^.]+$/, "");
-      const { data: inserted, error: insErr } = await supabase
-        .from("gallery_images")
-        .insert({ image_url: pub.publicUrl, storage_path: path, title })
-        .select()
-        .single();
-      if (insErr || !inserted) {
-        // Rollback storage upload so we don't leak orphan files
-        await supabase.storage.from("gallery").remove([path]);
-        toast.error(`${file.name}: ${insErr?.message ?? "Failed to save"}`);
-        continue;
-      }
-      ok++;
-      newRows.push(inserted as GalleryRow);
+    // Enforce gallery image count limit
+    const remainingSlots = MAX_IMAGES - gallery.length;
+    if (remainingSlots <= 0) {
+      toast.error(`Gallery limit reached (${MAX_IMAGES} images). Delete some before uploading more.`);
+      input.value = "";
+      return;
     }
-    toast.dismiss(t);
+    let toUpload = valid;
+    if (valid.length > remainingSlots) {
+      toast.warning(`Only ${remainingSlots} more image(s) can fit — uploading the first ${remainingSlots}.`);
+      toUpload = valid.slice(0, remainingSlots);
+    }
+
+    // Enforce total storage size (estimate from existing files via storage list)
+    try {
+      const { data: list } = await supabase.storage.from("gallery").list("", { limit: 1000 });
+      const used = (list ?? []).reduce((a, b) => a + (b.metadata?.size ?? 0), 0);
+      const incoming = toUpload.reduce((a, b) => a + b.size, 0);
+      if (used + incoming > MAX_TOTAL_BYTES) {
+        toast.error(`Storage limit would be exceeded (${(MAX_TOTAL_BYTES / 1024 / 1024).toFixed(0)} MB total).`);
+        input.value = "";
+        return;
+      }
+    } catch { /* non-fatal */ }
+
+    const queue: UploadItem[] = toUpload.map((f) => ({
+      id: crypto.randomUUID(), name: f.name, size: f.size, status: "pending", attempts: 0,
+    }));
+    setUploadQueue(queue);
+    setUploading(true);
+
+    const newRows: GalleryRow[] = [];
+    let ok = 0;
+    for (let i = 0; i < toUpload.length; i++) {
+      const file = toUpload[i];
+      const item = queue[i];
+      updateQueueItem(item.id, { status: "uploading" });
+      try {
+        const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${crypto.randomUUID()}.${ext}`;
+
+        const inserted = await withRetry(async () => {
+          updateQueueItem(item.id, { attempts: (item.attempts || 0) + 1 });
+          const { error: upErr } = await supabase.storage
+            .from("gallery")
+            .upload(path, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+          if (upErr) throw upErr;
+
+          const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
+          const title = file.name.replace(/\.[^.]+$/, "");
+          const { data: row, error: insErr } = await supabase
+            .from("gallery_images")
+            .insert({ image_url: pub.publicUrl, storage_path: path, title })
+            .select()
+            .single();
+          if (insErr || !row) {
+            await supabase.storage.from("gallery").remove([path]);
+            throw insErr ?? new Error("Failed to save image record");
+          }
+          return row as GalleryRow;
+        }, 3, 600);
+
+        ok++;
+        newRows.push(inserted);
+        updateQueueItem(item.id, { status: "done" });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        updateQueueItem(item.id, { status: "failed", error: msg });
+        toast.error(`${file.name}: ${msg}`);
+      }
+    }
+
     setUploading(false);
     input.value = "";
 
     if (ok > 0) {
       setGallery((prev) => [...newRows, ...prev]);
       toast.success(`${ok} image(s) uploaded`);
-      loadAll();
+      // Auto-clear successful queue entries after a moment, keep failures visible
+      setTimeout(() => setUploadQueue((prev) => prev.filter((x) => x.status === "failed")), 2500);
     } else {
-      toast.error("No images were uploaded");
+      toast.error("No images were uploaded — see errors below.");
     }
   };
 
   const deleteImage = async (img: GalleryRow) => {
-    if (!confirm("Delete this image?")) return;
+    if (!confirm(`Delete "${img.title ?? "this image"}"? This cannot be undone.`)) return;
     if (img.storage_path) await supabase.storage.from("gallery").remove([img.storage_path]);
     const { error } = await supabase.from("gallery_images").delete().eq("id", img.id);
     if (error) return toast.error(error.message);
     setGallery((prev) => prev.filter((x) => x.id !== img.id));
+    setLightboxIdx(null);
     toast.success("Image deleted");
   };
 
-  const renameImage = async (img: GalleryRow) => {
-    const next = prompt("New title:", img.title ?? "");
-    if (next === null) return;
-    const { error } = await supabase.from("gallery_images").update({ title: next }).eq("id", img.id);
-    if (error) return toast.error(error.message);
-    setGallery((prev) => prev.map((x) => x.id === img.id ? { ...x, title: next } : x));
-    toast.success("Title updated");
+  const saveEdit = async (
+    target: GalleryRow,
+    next: { title: string; category: string },
+    replacement?: File | null,
+  ) => {
+    try {
+      let image_url = target.image_url;
+      let storage_path = target.storage_path;
+
+      if (replacement) {
+        if (!ALLOWED_TYPES.includes(replacement.type)) throw new Error("Only JPG, PNG, WebP allowed");
+        if (replacement.size > MAX_FILE_BYTES) throw new Error("File exceeds 10MB");
+        const ext = (replacement.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${crypto.randomUUID()}.${ext}`;
+        await withRetry(async () => {
+          const { error } = await supabase.storage
+            .from("gallery")
+            .upload(path, replacement, { upsert: false, contentType: replacement.type, cacheControl: "3600" });
+          if (error) throw error;
+        }, 3, 600);
+        const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
+        image_url = `${pub.publicUrl}?v=${Date.now()}`;
+        // Remove the old file after successful new upload
+        if (target.storage_path) await supabase.storage.from("gallery").remove([target.storage_path]);
+        storage_path = path;
+      }
+
+      const { data: updated, error } = await supabase
+        .from("gallery_images")
+        .update({ title: next.title || null, category: next.category || null, image_url, storage_path })
+        .eq("id", target.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      setGallery((prev) => prev.map((x) => (x.id === target.id ? (updated as GalleryRow) : x)));
+      toast.success("Image updated");
+      setEditTarget(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update image");
+    }
   };
 
   const onFounderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

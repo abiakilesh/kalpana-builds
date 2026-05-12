@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2, Eye, Phone, MapPin, Clock, MessageSquare, Tag } from "lucide-react";
+import { LogOut, Search, Trash2, Download, CheckCircle2, Image as ImageIcon, Users, Upload, X, Pencil, UserCircle2, Eye, Phone, MapPin, Clock, MessageSquare, Tag, ChevronLeft, ChevronRight, Loader2, AlertCircle, Save, FileImage } from "lucide-react";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Kalpana Associates" }, { name: "robots", content: "noindex,nofollow" }] }),
@@ -21,7 +21,26 @@ interface Lead {
   created_at: string;
 }
 
-interface GalleryRow { id: string; image_url: string; storage_path: string | null; title: string | null }
+interface GalleryRow { id: string; image_url: string; storage_path: string | null; title: string | null; category: string | null; created_at?: string }
+
+type UploadStatus = "pending" | "uploading" | "done" | "failed";
+interface UploadItem { id: string; name: string; size: number; status: UploadStatus; error?: string; attempts: number }
+
+const MAX_IMAGES = 300;
+const MAX_TOTAL_BYTES = 500 * 1024 * 1024; // 500 MB
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+async function withRetry<T>(fn: () => Promise<T>, max = 3, baseMs = 500): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < max; i++) {
+    try { return await fn(); } catch (e) {
+      lastErr = e;
+      if (i < max - 1) await new Promise((r) => setTimeout(r, Math.pow(2, i) * baseMs + Math.random() * 200));
+    }
+  }
+  throw lastErr;
+}
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -29,11 +48,15 @@ function Dashboard() {
   const [tab, setTab] = useState<"leads" | "gallery" | "founder">("leads");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [gallery, setGallery] = useState<GalleryRow[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(true);
   const [founderUrl, setFounderUrl] = useState<string>("");
   const [founderPath, setFounderPath] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "new" | "contacted">("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<GalleryRow | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -48,16 +71,17 @@ function Dashboard() {
   }, [navigate]);
 
   const loadAll = async () => {
+    setGalleryLoading(true);
     const [{ data: l }, { data: g }, { data: s }] = await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(1000),
-      supabase.from("gallery_images").select("*").order("created_at", { ascending: false }).limit(500),
+      supabase.from("gallery_images").select("*").order("created_at", { ascending: false }).limit(1000),
       supabase.from("site_settings").select("*").eq("key", "founder_image").maybeSingle(),
     ]);
     if (l) setLeads(l as Lead[]);
     if (g) setGallery(g as GalleryRow[]);
+    setGalleryLoading(false);
     if (s?.value) {
       setFounderUrl(s.value);
-      // try to derive storage path from public URL
       const m = s.value.match(/\/gallery\/(.+)$/);
       setFounderPath(m ? m[1] : "");
     }
@@ -120,78 +144,159 @@ function Dashboard() {
 
   const [uploading, setUploading] = useState(false);
 
+  const updateQueueItem = (id: string, patch: Partial<UploadItem>) =>
+    setUploadQueue((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
     const files = Array.from(input.files ?? []);
     if (!files.length) return;
 
-    const ALLOWED = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    const MAX = 10 * 1024 * 1024; // 10MB
+    // Pre-validate type and size
     const valid: File[] = [];
     for (const f of files) {
-      if (!ALLOWED.includes(f.type)) { toast.error(`${f.name}: only JPG, PNG, WebP allowed`); continue; }
-      if (f.size > MAX) { toast.error(`${f.name}: exceeds 10MB`); continue; }
+      if (!ALLOWED_TYPES.includes(f.type)) { toast.error(`${f.name}: only JPG, PNG, WebP allowed`); continue; }
+      if (f.size > MAX_FILE_BYTES) { toast.error(`${f.name}: exceeds 10MB`); continue; }
       valid.push(f);
     }
     if (!valid.length) { input.value = ""; return; }
 
-    setUploading(true);
-    const t = toast.loading(`Uploading ${valid.length} image(s)…`);
-    let ok = 0;
-    const newRows: GalleryRow[] = [];
-    for (const file of valid) {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-      const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("gallery")
-        .upload(path, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
-      if (upErr) { toast.error(`${file.name}: ${upErr.message}`); continue; }
-
-      const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
-      const title = file.name.replace(/\.[^.]+$/, "");
-      const { data: inserted, error: insErr } = await supabase
-        .from("gallery_images")
-        .insert({ image_url: pub.publicUrl, storage_path: path, title })
-        .select()
-        .single();
-      if (insErr || !inserted) {
-        // Rollback storage upload so we don't leak orphan files
-        await supabase.storage.from("gallery").remove([path]);
-        toast.error(`${file.name}: ${insErr?.message ?? "Failed to save"}`);
-        continue;
-      }
-      ok++;
-      newRows.push(inserted as GalleryRow);
+    // Enforce gallery image count limit
+    const remainingSlots = MAX_IMAGES - gallery.length;
+    if (remainingSlots <= 0) {
+      toast.error(`Gallery limit reached (${MAX_IMAGES} images). Delete some before uploading more.`);
+      input.value = "";
+      return;
     }
-    toast.dismiss(t);
+    let toUpload = valid;
+    if (valid.length > remainingSlots) {
+      toast.warning(`Only ${remainingSlots} more image(s) can fit — uploading the first ${remainingSlots}.`);
+      toUpload = valid.slice(0, remainingSlots);
+    }
+
+    // Enforce total storage size (estimate from existing files via storage list)
+    try {
+      const { data: list } = await supabase.storage.from("gallery").list("", { limit: 1000 });
+      const used = (list ?? []).reduce((a, b) => a + (b.metadata?.size ?? 0), 0);
+      const incoming = toUpload.reduce((a, b) => a + b.size, 0);
+      if (used + incoming > MAX_TOTAL_BYTES) {
+        toast.error(`Storage limit would be exceeded (${(MAX_TOTAL_BYTES / 1024 / 1024).toFixed(0)} MB total).`);
+        input.value = "";
+        return;
+      }
+    } catch { /* non-fatal */ }
+
+    const queue: UploadItem[] = toUpload.map((f) => ({
+      id: crypto.randomUUID(), name: f.name, size: f.size, status: "pending", attempts: 0,
+    }));
+    setUploadQueue(queue);
+    setUploading(true);
+
+    const newRows: GalleryRow[] = [];
+    let ok = 0;
+    for (let i = 0; i < toUpload.length; i++) {
+      const file = toUpload[i];
+      const item = queue[i];
+      updateQueueItem(item.id, { status: "uploading" });
+      try {
+        const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${crypto.randomUUID()}.${ext}`;
+
+        const inserted = await withRetry(async () => {
+          updateQueueItem(item.id, { attempts: (item.attempts || 0) + 1 });
+          const { error: upErr } = await supabase.storage
+            .from("gallery")
+            .upload(path, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+          if (upErr) throw upErr;
+
+          const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
+          const title = file.name.replace(/\.[^.]+$/, "");
+          const { data: row, error: insErr } = await supabase
+            .from("gallery_images")
+            .insert({ image_url: pub.publicUrl, storage_path: path, title })
+            .select()
+            .single();
+          if (insErr || !row) {
+            await supabase.storage.from("gallery").remove([path]);
+            throw insErr ?? new Error("Failed to save image record");
+          }
+          return row as GalleryRow;
+        }, 3, 600);
+
+        ok++;
+        newRows.push(inserted);
+        updateQueueItem(item.id, { status: "done" });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        updateQueueItem(item.id, { status: "failed", error: msg });
+        toast.error(`${file.name}: ${msg}`);
+      }
+    }
+
     setUploading(false);
     input.value = "";
 
     if (ok > 0) {
       setGallery((prev) => [...newRows, ...prev]);
       toast.success(`${ok} image(s) uploaded`);
-      loadAll();
+      // Auto-clear successful queue entries after a moment, keep failures visible
+      setTimeout(() => setUploadQueue((prev) => prev.filter((x) => x.status === "failed")), 2500);
     } else {
-      toast.error("No images were uploaded");
+      toast.error("No images were uploaded — see errors below.");
     }
   };
 
   const deleteImage = async (img: GalleryRow) => {
-    if (!confirm("Delete this image?")) return;
+    if (!confirm(`Delete "${img.title ?? "this image"}"? This cannot be undone.`)) return;
     if (img.storage_path) await supabase.storage.from("gallery").remove([img.storage_path]);
     const { error } = await supabase.from("gallery_images").delete().eq("id", img.id);
     if (error) return toast.error(error.message);
     setGallery((prev) => prev.filter((x) => x.id !== img.id));
+    setLightboxIdx(null);
     toast.success("Image deleted");
   };
 
-  const renameImage = async (img: GalleryRow) => {
-    const next = prompt("New title:", img.title ?? "");
-    if (next === null) return;
-    const { error } = await supabase.from("gallery_images").update({ title: next }).eq("id", img.id);
-    if (error) return toast.error(error.message);
-    setGallery((prev) => prev.map((x) => x.id === img.id ? { ...x, title: next } : x));
-    toast.success("Title updated");
+  const saveEdit = async (
+    target: GalleryRow,
+    next: { title: string; category: string },
+    replacement?: File | null,
+  ) => {
+    try {
+      let image_url = target.image_url;
+      let storage_path = target.storage_path;
+
+      if (replacement) {
+        if (!ALLOWED_TYPES.includes(replacement.type)) throw new Error("Only JPG, PNG, WebP allowed");
+        if (replacement.size > MAX_FILE_BYTES) throw new Error("File exceeds 10MB");
+        const ext = (replacement.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${crypto.randomUUID()}.${ext}`;
+        await withRetry(async () => {
+          const { error } = await supabase.storage
+            .from("gallery")
+            .upload(path, replacement, { upsert: false, contentType: replacement.type, cacheControl: "3600" });
+          if (error) throw error;
+        }, 3, 600);
+        const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
+        image_url = `${pub.publicUrl}?v=${Date.now()}`;
+        // Remove the old file after successful new upload
+        if (target.storage_path) await supabase.storage.from("gallery").remove([target.storage_path]);
+        storage_path = path;
+      }
+
+      const { data: updated, error } = await supabase
+        .from("gallery_images")
+        .update({ title: next.title || null, category: next.category || null, image_url, storage_path })
+        .eq("id", target.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      setGallery((prev) => prev.map((x) => (x.id === target.id ? (updated as GalleryRow) : x)));
+      toast.success("Image updated");
+      setEditTarget(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update image");
+    }
   };
 
   const onFounderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -344,33 +449,53 @@ function Dashboard() {
 
         {tab === "gallery" && (
           <div className="space-y-4">
-            <div className="bg-card rounded-2xl border border-border p-5">
+            <div className="bg-card rounded-2xl border border-border p-5 space-y-4">
               <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-8 transition ${uploading ? "opacity-60 cursor-wait" : "cursor-pointer hover:border-gold/40 hover:bg-muted/30"}`}>
                 <Upload className={`h-8 w-8 text-gold ${uploading ? "animate-pulse" : ""}`} />
                 <span className="font-semibold text-navy">{uploading ? "Uploading…" : "Upload Images"}</span>
-                <span className="text-xs text-muted-foreground">JPG, PNG, WebP · up to 10MB each</span>
+                <span className="text-xs text-muted-foreground">JPG, PNG, WebP · up to 10MB each · {gallery.length}/{MAX_IMAGES} used</span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading} className="hidden" onChange={onUpload} />
               </label>
-            </div>
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-              {gallery.length === 0 && (
-                <div className="col-span-full text-center text-muted-foreground py-12 bg-card rounded-2xl border border-border">No images uploaded yet.</div>
+
+              {uploadQueue.length > 0 && (
+                <UploadProgressList items={uploadQueue} onClear={() => setUploadQueue([])} />
               )}
-              {gallery.map((g) => (
-                <div key={g.id} className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-border bg-card">
-                  <img src={g.image_url} alt={g.title ?? "Gallery"} loading="lazy" className="h-full w-full object-cover" />
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                    <button onClick={() => renameImage(g)} title="Edit title" className="p-1.5 rounded-full bg-navy text-white">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => deleteImage(g)} title="Delete" className="p-1.5 rounded-full bg-destructive text-destructive-foreground">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {g.title && <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-navy/90 to-transparent text-white text-xs p-2 truncate">{g.title}</div>}
-                </div>
-              ))}
             </div>
+
+            {galleryLoading ? (
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="aspect-[4/3] rounded-xl bg-muted animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {gallery.length === 0 && (
+                  <div className="col-span-full text-center text-muted-foreground py-12 bg-card rounded-2xl border border-border">No images uploaded yet.</div>
+                )}
+                {gallery.map((g, idx) => (
+                  <div key={g.id} className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-border bg-card shadow-sm hover:shadow-premium transition-shadow">
+                    <button type="button" onClick={() => setLightboxIdx(idx)} className="absolute inset-0 w-full h-full">
+                      <img src={g.image_url} alt={g.title ?? "Gallery"} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    </button>
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button onClick={() => setEditTarget(g)} title="Edit" className="p-1.5 rounded-full bg-navy text-white hover:bg-navy/90">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => deleteImage(g)} title="Delete" className="p-1.5 rounded-full bg-destructive text-destructive-foreground hover:opacity-90">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {g.category && (
+                      <span className="absolute top-2 left-2 inline-flex items-center px-2 py-0.5 rounded-full bg-gold/90 text-navy text-[10px] font-bold uppercase tracking-wider">
+                        {g.category}
+                      </span>
+                    )}
+                    {g.title && <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-navy/90 to-transparent text-white text-xs p-2 truncate pointer-events-none">{g.title}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -413,9 +538,175 @@ function Dashboard() {
         onToggleContacted={toggleContacted}
         onDelete={async (id) => { await deleteLead(id); setSelectedLead(null); }}
       />
+
+      <Lightbox
+        images={gallery}
+        index={lightboxIdx}
+        onClose={() => setLightboxIdx(null)}
+        onPrev={() => setLightboxIdx((i) => (i === null ? null : (i - 1 + gallery.length) % gallery.length))}
+        onNext={() => setLightboxIdx((i) => (i === null ? null : (i + 1) % gallery.length))}
+        onEdit={(g) => { setLightboxIdx(null); setEditTarget(g); }}
+        onDelete={deleteImage}
+      />
+
+      <EditImageModal
+        target={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSave={saveEdit}
+      />
     </section>
   );
 }
+
+function UploadProgressList({ items, onClear }: { items: UploadItem[]; onClear: () => void }) {
+  const done = items.filter((i) => i.status === "done").length;
+  const failed = items.filter((i) => i.status === "failed").length;
+  const total = items.length;
+  const pct = total ? Math.round(((done + failed) / total) * 100) : 0;
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center justify-between text-xs font-medium text-foreground/80">
+        <span>Uploading {done}/{total}{failed ? ` · ${failed} failed` : ""}</span>
+        <button onClick={onClear} className="text-muted-foreground hover:text-foreground">Clear</button>
+      </div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
+        <div className="h-full bg-gradient-gold transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <ul className="space-y-1 max-h-40 overflow-y-auto">
+        {items.map((it) => (
+          <li key={it.id} className="flex items-center gap-2 text-xs">
+            {it.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-royal" />}
+            {it.status === "pending" && <FileImage className="h-3.5 w-3.5 text-muted-foreground" />}
+            {it.status === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+            {it.status === "failed" && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
+            <span className="flex-1 truncate">{it.name}</span>
+            <span className="text-muted-foreground">{(it.size / 1024 / 1024).toFixed(1)} MB</span>
+            {it.status === "failed" && it.error && (
+              <span className="text-destructive max-w-[200px] truncate" title={it.error}>{it.error}</span>
+            )}
+            {it.attempts > 1 && it.status !== "done" && (
+              <span className="text-muted-foreground">retry {it.attempts}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Lightbox({
+  images, index, onClose, onPrev, onNext, onEdit, onDelete,
+}: {
+  images: GalleryRow[];
+  index: number | null;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onEdit: (g: GalleryRow) => void;
+  onDelete: (g: GalleryRow) => void;
+}) {
+  useEffect(() => {
+    if (index === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") onPrev();
+      if (e.key === "ArrowRight") onNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, onClose, onPrev, onNext]);
+
+  if (index === null || !images[index]) return null;
+  const g = images[index];
+  return (
+    <div className="fixed inset-0 z-[80] bg-navy/90 backdrop-blur-md flex items-center justify-center p-4 animate-float-in" onClick={onClose}>
+      <button className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={onClose} aria-label="Close"><X className="h-5 w-5" /></button>
+      {images.length > 1 && (
+        <>
+          <button className="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={(e) => { e.stopPropagation(); onPrev(); }} aria-label="Previous"><ChevronLeft className="h-6 w-6" /></button>
+          <button className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={(e) => { e.stopPropagation(); onNext(); }} aria-label="Next"><ChevronRight className="h-6 w-6" /></button>
+        </>
+      )}
+      <div className="relative max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+        <img src={g.image_url} alt={g.title ?? "Gallery"} className="max-h-[80vh] w-full object-contain rounded-xl shadow-premium" />
+        <div className="mt-4 flex items-center justify-between gap-3 bg-card/95 rounded-xl p-3 border border-border">
+          <div className="min-w-0">
+            <div className="font-semibold text-navy truncate">{g.title ?? "Untitled"}</div>
+            <div className="text-xs text-muted-foreground truncate">{g.category ?? "No category"} · {index + 1} / {images.length}</div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => onEdit(g)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-navy text-primary-foreground text-xs font-semibold hover:bg-navy/90"><Pencil className="h-3.5 w-3.5" /> Edit</button>
+            <button onClick={() => onDelete(g)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground text-xs font-semibold"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditImageModal({
+  target, onClose, onSave,
+}: {
+  target: GalleryRow | null;
+  onClose: () => void;
+  onSave: (target: GalleryRow, next: { title: string; category: string }, replacement?: File | null) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (target) {
+      setTitle(target.title ?? "");
+      setCategory(target.category ?? "");
+      setFile(null);
+    }
+  }, [target]);
+
+  if (!target) return null;
+  const previewUrl = file ? URL.createObjectURL(file) : target.image_url;
+  return (
+    <div className="fixed inset-0 z-[85] bg-navy/60 backdrop-blur-sm flex items-center justify-center p-4 animate-float-in" onClick={onClose}>
+      <div className="relative w-full max-w-lg rounded-2xl bg-card shadow-premium overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <button className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-background/80 hover:bg-background text-foreground/70" onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></button>
+        <div className="bg-gradient-hero text-white px-6 pt-6 pb-4">
+          <h3 className="font-display text-xl font-bold">Edit image</h3>
+          <p className="text-white/70 text-xs mt-1">Update title, category, or replace the file.</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="aspect-[4/3] w-full rounded-xl overflow-hidden border border-border bg-muted">
+            <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-gold/40" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category</label>
+            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Villa, Commercial, Interior" className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-gold/40" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Replace image (optional)</label>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-navy file:text-white file:font-semibold file:cursor-pointer" />
+            {file && <p className="text-xs text-muted-foreground">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</p>}
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <button onClick={onClose} className="px-3 py-2 rounded-md text-sm font-semibold text-foreground/70 hover:bg-muted">Cancel</button>
+            <button
+              disabled={saving}
+              onClick={async () => { setSaving(true); try { await onSave(target, { title, category }, file); } finally { setSaving(false); } }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-gradient-gold text-navy text-sm font-semibold shadow-gold disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function HL({ text, query }: { text: string; query: string }) {
   const q = query.trim();

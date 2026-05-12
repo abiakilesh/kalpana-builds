@@ -449,33 +449,53 @@ function Dashboard() {
 
         {tab === "gallery" && (
           <div className="space-y-4">
-            <div className="bg-card rounded-2xl border border-border p-5">
+            <div className="bg-card rounded-2xl border border-border p-5 space-y-4">
               <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-8 transition ${uploading ? "opacity-60 cursor-wait" : "cursor-pointer hover:border-gold/40 hover:bg-muted/30"}`}>
                 <Upload className={`h-8 w-8 text-gold ${uploading ? "animate-pulse" : ""}`} />
                 <span className="font-semibold text-navy">{uploading ? "Uploading…" : "Upload Images"}</span>
-                <span className="text-xs text-muted-foreground">JPG, PNG, WebP · up to 10MB each</span>
+                <span className="text-xs text-muted-foreground">JPG, PNG, WebP · up to 10MB each · {gallery.length}/{MAX_IMAGES} used</span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading} className="hidden" onChange={onUpload} />
               </label>
-            </div>
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-              {gallery.length === 0 && (
-                <div className="col-span-full text-center text-muted-foreground py-12 bg-card rounded-2xl border border-border">No images uploaded yet.</div>
+
+              {uploadQueue.length > 0 && (
+                <UploadProgressList items={uploadQueue} onClear={() => setUploadQueue([])} />
               )}
-              {gallery.map((g) => (
-                <div key={g.id} className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-border bg-card">
-                  <img src={g.image_url} alt={g.title ?? "Gallery"} loading="lazy" className="h-full w-full object-cover" />
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                    <button onClick={() => renameImage(g)} title="Edit title" className="p-1.5 rounded-full bg-navy text-white">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => deleteImage(g)} title="Delete" className="p-1.5 rounded-full bg-destructive text-destructive-foreground">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {g.title && <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-navy/90 to-transparent text-white text-xs p-2 truncate">{g.title}</div>}
-                </div>
-              ))}
             </div>
+
+            {galleryLoading ? (
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="aspect-[4/3] rounded-xl bg-muted animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {gallery.length === 0 && (
+                  <div className="col-span-full text-center text-muted-foreground py-12 bg-card rounded-2xl border border-border">No images uploaded yet.</div>
+                )}
+                {gallery.map((g, idx) => (
+                  <div key={g.id} className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-border bg-card shadow-sm hover:shadow-premium transition-shadow">
+                    <button type="button" onClick={() => setLightboxIdx(idx)} className="absolute inset-0 w-full h-full">
+                      <img src={g.image_url} alt={g.title ?? "Gallery"} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    </button>
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button onClick={() => setEditTarget(g)} title="Edit" className="p-1.5 rounded-full bg-navy text-white hover:bg-navy/90">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => deleteImage(g)} title="Delete" className="p-1.5 rounded-full bg-destructive text-destructive-foreground hover:opacity-90">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {g.category && (
+                      <span className="absolute top-2 left-2 inline-flex items-center px-2 py-0.5 rounded-full bg-gold/90 text-navy text-[10px] font-bold uppercase tracking-wider">
+                        {g.category}
+                      </span>
+                    )}
+                    {g.title && <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-navy/90 to-transparent text-white text-xs p-2 truncate pointer-events-none">{g.title}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

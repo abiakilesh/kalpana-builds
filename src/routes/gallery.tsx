@@ -26,20 +26,22 @@ const fallbackImages = [
   { id: "f6", image_url: villa2, title: "Garden Residence" },
 ];
 
-interface Img { id: string; image_url: string; title: string | null }
+interface Img { id: string; image_url: string; title: string | null; category?: string | null }
 
 function GalleryPage() {
   const [images, setImages] = useState<Img[]>(fallbackImages as Img[]);
   const [active, setActive] = useState<Img | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase
       .from("gallery_images")
-      .select("id, image_url, title")
+      .select("id, image_url, title, category")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false })
       .then(({ data }) => {
         if (data && data.length) setImages(data);
+        setLoading(false);
       });
   }, []);
 

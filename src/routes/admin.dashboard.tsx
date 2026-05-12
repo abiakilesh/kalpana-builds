@@ -118,25 +118,62 @@ function Dashboard() {
     toast.success("Lead deleted");
   };
 
+  const [uploading, setUploading] = useState(false);
+
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    const input = e.target;
+    const files = Array.from(input.files ?? []);
     if (!files.length) return;
-    const t = toast.loading(`Uploading ${files.length} image(s)…`);
-    for (const file of files) {
-      const ext = file.name.split(".").pop();
+
+    const ALLOWED = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    const MAX = 10 * 1024 * 1024; // 10MB
+    const valid: File[] = [];
+    for (const f of files) {
+      if (!ALLOWED.includes(f.type)) { toast.error(`${f.name}: only JPG, PNG, WebP allowed`); continue; }
+      if (f.size > MAX) { toast.error(`${f.name}: exceeds 10MB`); continue; }
+      valid.push(f);
+    }
+    if (!valid.length) { input.value = ""; return; }
+
+    setUploading(true);
+    const t = toast.loading(`Uploading ${valid.length} image(s)…`);
+    let ok = 0;
+    const newRows: GalleryRow[] = [];
+    for (const file of valid) {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
       const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("gallery").upload(path, file, { upsert: false });
-      if (upErr) { toast.error(upErr.message); continue; }
+      const { error: upErr } = await supabase.storage
+        .from("gallery")
+        .upload(path, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+      if (upErr) { toast.error(`${file.name}: ${upErr.message}`); continue; }
+
       const { data: pub } = supabase.storage.from("gallery").getPublicUrl(path);
-      const { error: insErr } = await supabase.from("gallery_images").insert({
-        image_url: pub.publicUrl, storage_path: path, title: file.name.replace(/\.[^.]+$/, ""),
-      });
-      if (insErr) toast.error(insErr.message);
+      const title = file.name.replace(/\.[^.]+$/, "");
+      const { data: inserted, error: insErr } = await supabase
+        .from("gallery_images")
+        .insert({ image_url: pub.publicUrl, storage_path: path, title })
+        .select()
+        .single();
+      if (insErr || !inserted) {
+        // Rollback storage upload so we don't leak orphan files
+        await supabase.storage.from("gallery").remove([path]);
+        toast.error(`${file.name}: ${insErr?.message ?? "Failed to save"}`);
+        continue;
+      }
+      ok++;
+      newRows.push(inserted as GalleryRow);
     }
     toast.dismiss(t);
-    toast.success("Upload complete");
-    e.target.value = "";
-    loadAll();
+    setUploading(false);
+    input.value = "";
+
+    if (ok > 0) {
+      setGallery((prev) => [...newRows, ...prev]);
+      toast.success(`${ok} image(s) uploaded`);
+      loadAll();
+    } else {
+      toast.error("No images were uploaded");
+    }
   };
 
   const deleteImage = async (img: GalleryRow) => {
@@ -308,11 +345,11 @@ function Dashboard() {
         {tab === "gallery" && (
           <div className="space-y-4">
             <div className="bg-card rounded-2xl border border-border p-5">
-              <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-8 cursor-pointer hover:border-gold/40 hover:bg-muted/30 transition">
-                <Upload className="h-8 w-8 text-gold" />
-                <span className="font-semibold text-navy">Upload Images</span>
-                <span className="text-xs text-muted-foreground">Multiple files supported · JPG, PNG, WebP</span>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={onUpload} />
+              <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-8 transition ${uploading ? "opacity-60 cursor-wait" : "cursor-pointer hover:border-gold/40 hover:bg-muted/30"}`}>
+                <Upload className={`h-8 w-8 text-gold ${uploading ? "animate-pulse" : ""}`} />
+                <span className="font-semibold text-navy">{uploading ? "Uploading…" : "Upload Images"}</span>
+                <span className="text-xs text-muted-foreground">JPG, PNG, WebP · up to 10MB each</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading} className="hidden" onChange={onUpload} />
               </label>
             </div>
             <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">

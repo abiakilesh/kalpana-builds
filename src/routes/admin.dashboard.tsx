@@ -538,9 +538,175 @@ function Dashboard() {
         onToggleContacted={toggleContacted}
         onDelete={async (id) => { await deleteLead(id); setSelectedLead(null); }}
       />
+
+      <Lightbox
+        images={gallery}
+        index={lightboxIdx}
+        onClose={() => setLightboxIdx(null)}
+        onPrev={() => setLightboxIdx((i) => (i === null ? null : (i - 1 + gallery.length) % gallery.length))}
+        onNext={() => setLightboxIdx((i) => (i === null ? null : (i + 1) % gallery.length))}
+        onEdit={(g) => { setLightboxIdx(null); setEditTarget(g); }}
+        onDelete={deleteImage}
+      />
+
+      <EditImageModal
+        target={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSave={saveEdit}
+      />
     </section>
   );
 }
+
+function UploadProgressList({ items, onClear }: { items: UploadItem[]; onClear: () => void }) {
+  const done = items.filter((i) => i.status === "done").length;
+  const failed = items.filter((i) => i.status === "failed").length;
+  const total = items.length;
+  const pct = total ? Math.round(((done + failed) / total) * 100) : 0;
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center justify-between text-xs font-medium text-foreground/80">
+        <span>Uploading {done}/{total}{failed ? ` · ${failed} failed` : ""}</span>
+        <button onClick={onClear} className="text-muted-foreground hover:text-foreground">Clear</button>
+      </div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
+        <div className="h-full bg-gradient-gold transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <ul className="space-y-1 max-h-40 overflow-y-auto">
+        {items.map((it) => (
+          <li key={it.id} className="flex items-center gap-2 text-xs">
+            {it.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-royal" />}
+            {it.status === "pending" && <FileImage className="h-3.5 w-3.5 text-muted-foreground" />}
+            {it.status === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+            {it.status === "failed" && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
+            <span className="flex-1 truncate">{it.name}</span>
+            <span className="text-muted-foreground">{(it.size / 1024 / 1024).toFixed(1)} MB</span>
+            {it.status === "failed" && it.error && (
+              <span className="text-destructive max-w-[200px] truncate" title={it.error}>{it.error}</span>
+            )}
+            {it.attempts > 1 && it.status !== "done" && (
+              <span className="text-muted-foreground">retry {it.attempts}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Lightbox({
+  images, index, onClose, onPrev, onNext, onEdit, onDelete,
+}: {
+  images: GalleryRow[];
+  index: number | null;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onEdit: (g: GalleryRow) => void;
+  onDelete: (g: GalleryRow) => void;
+}) {
+  useEffect(() => {
+    if (index === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") onPrev();
+      if (e.key === "ArrowRight") onNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, onClose, onPrev, onNext]);
+
+  if (index === null || !images[index]) return null;
+  const g = images[index];
+  return (
+    <div className="fixed inset-0 z-[80] bg-navy/90 backdrop-blur-md flex items-center justify-center p-4 animate-float-in" onClick={onClose}>
+      <button className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={onClose} aria-label="Close"><X className="h-5 w-5" /></button>
+      {images.length > 1 && (
+        <>
+          <button className="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={(e) => { e.stopPropagation(); onPrev(); }} aria-label="Previous"><ChevronLeft className="h-6 w-6" /></button>
+          <button className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={(e) => { e.stopPropagation(); onNext(); }} aria-label="Next"><ChevronRight className="h-6 w-6" /></button>
+        </>
+      )}
+      <div className="relative max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+        <img src={g.image_url} alt={g.title ?? "Gallery"} className="max-h-[80vh] w-full object-contain rounded-xl shadow-premium" />
+        <div className="mt-4 flex items-center justify-between gap-3 bg-card/95 rounded-xl p-3 border border-border">
+          <div className="min-w-0">
+            <div className="font-semibold text-navy truncate">{g.title ?? "Untitled"}</div>
+            <div className="text-xs text-muted-foreground truncate">{g.category ?? "No category"} · {index + 1} / {images.length}</div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => onEdit(g)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-navy text-primary-foreground text-xs font-semibold hover:bg-navy/90"><Pencil className="h-3.5 w-3.5" /> Edit</button>
+            <button onClick={() => onDelete(g)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground text-xs font-semibold"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditImageModal({
+  target, onClose, onSave,
+}: {
+  target: GalleryRow | null;
+  onClose: () => void;
+  onSave: (target: GalleryRow, next: { title: string; category: string }, replacement?: File | null) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (target) {
+      setTitle(target.title ?? "");
+      setCategory(target.category ?? "");
+      setFile(null);
+    }
+  }, [target]);
+
+  if (!target) return null;
+  const previewUrl = file ? URL.createObjectURL(file) : target.image_url;
+  return (
+    <div className="fixed inset-0 z-[85] bg-navy/60 backdrop-blur-sm flex items-center justify-center p-4 animate-float-in" onClick={onClose}>
+      <div className="relative w-full max-w-lg rounded-2xl bg-card shadow-premium overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <button className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-background/80 hover:bg-background text-foreground/70" onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></button>
+        <div className="bg-gradient-hero text-white px-6 pt-6 pb-4">
+          <h3 className="font-display text-xl font-bold">Edit image</h3>
+          <p className="text-white/70 text-xs mt-1">Update title, category, or replace the file.</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="aspect-[4/3] w-full rounded-xl overflow-hidden border border-border bg-muted">
+            <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-gold/40" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category</label>
+            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Villa, Commercial, Interior" className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-gold/40" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Replace image (optional)</label>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-navy file:text-white file:font-semibold file:cursor-pointer" />
+            {file && <p className="text-xs text-muted-foreground">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</p>}
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <button onClick={onClose} className="px-3 py-2 rounded-md text-sm font-semibold text-foreground/70 hover:bg-muted">Cancel</button>
+            <button
+              disabled={saving}
+              onClick={async () => { setSaving(true); try { await onSave(target, { title, category }, file); } finally { setSaving(false); } }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-gradient-gold text-navy text-sm font-semibold shadow-gold disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function HL({ text, query }: { text: string; query: string }) {
   const q = query.trim();

@@ -71,16 +71,17 @@ function Dashboard() {
   }, [navigate]);
 
   const loadAll = async () => {
+    setGalleryLoading(true);
     const [{ data: l }, { data: g }, { data: s }] = await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(1000),
-      supabase.from("gallery_images").select("*").order("created_at", { ascending: false }).limit(500),
+      supabase.from("gallery_images").select("*").order("created_at", { ascending: false }).limit(1000),
       supabase.from("site_settings").select("*").eq("key", "founder_image").maybeSingle(),
     ]);
     if (l) setLeads(l as Lead[]);
     if (g) setGallery(g as GalleryRow[]);
+    setGalleryLoading(false);
     if (s?.value) {
       setFounderUrl(s.value);
-      // try to derive storage path from public URL
       const m = s.value.match(/\/gallery\/(.+)$/);
       setFounderPath(m ? m[1] : "");
     }

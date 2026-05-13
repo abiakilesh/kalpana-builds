@@ -1,4 +1,4 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
 import { Header } from "@/components/layout/Header";
@@ -70,6 +70,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -77,8 +80,8 @@ function RootComponent() {
         <Outlet />
       </main>
       <Footer />
-      <FloatingCTAs />
-      <LeadPopup />
+      {!isAdminRoute && <FloatingCTAs />}
+      {!isAdminRoute && <LeadPopup />}
       <Toaster richColors position="top-center" />
     </div>
   );

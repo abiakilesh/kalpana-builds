@@ -161,6 +161,26 @@ function Dashboard() {
     }
     if (!valid.length) { input.value = ""; return; }
 
+    // Pre-flight: ensure we have a valid session AND the admin role
+    // (RLS on gallery_images + storage.objects requires has_role(uid,'admin'))
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    const session = refreshed.session ?? (await supabase.auth.getSession()).data.session;
+    if (!session?.user) {
+      toast.error("Your session expired. Please sign in again.");
+      input.value = "";
+      navigate({ to: "/admin" });
+      return;
+    }
+    const { data: isAdmin, error: roleErr } = await supabase.rpc("has_role", {
+      _user_id: session.user.id,
+      _role: "admin",
+    });
+    if (roleErr || !isAdmin) {
+      toast.error("This account does not have admin permissions. Ask the owner to grant access.");
+      input.value = "";
+      return;
+    }
+
     // Enforce gallery image count limit
     const remainingSlots = MAX_IMAGES - gallery.length;
     if (remainingSlots <= 0) {

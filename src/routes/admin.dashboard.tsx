@@ -161,8 +161,7 @@ function Dashboard() {
     }
     if (!valid.length) { input.value = ""; return; }
 
-    // Pre-flight: ensure we have a valid session AND the admin role
-    // (RLS on gallery_images + storage.objects requires has_role(uid,'admin'))
+    // Pre-flight: ensure we have a valid session and this account has an admin role.
     const { data: refreshed } = await supabase.auth.refreshSession();
     const session = refreshed.session ?? (await supabase.auth.getSession()).data.session;
     if (!session?.user) {
@@ -171,11 +170,13 @@ function Dashboard() {
       navigate({ to: "/admin" });
       return;
     }
-    const { data: isAdmin, error: roleErr } = await supabase.rpc("has_role", {
-      _user_id: session.user.id,
-      _role: "admin",
-    });
-    if (roleErr || !isAdmin) {
+    const { data: adminRole, error: roleErr } = await supabase
+      .from("user_roles")
+      .select("id")
+      .eq("user_id", session.user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (roleErr || !adminRole) {
       toast.error("This account does not have admin permissions. Ask the owner to grant access.");
       input.value = "";
       return;

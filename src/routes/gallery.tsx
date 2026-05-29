@@ -29,20 +29,47 @@ const fallbackImages = [
 interface Img { id: string; image_url: string; title: string | null; category?: string | null }
 
 function GalleryPage() {
-  const [images, setImages] = useState<Img[]>(fallbackImages as Img[]);
+
+  const [images, setImages] = useState<Img[]>([]);
   const [active, setActive] = useState<Img | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from("gallery_images")
-      .select("id, image_url, title, category")
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (data && data.length) setImages(data);
-        setLoading(false);
-      });
+    let cancelled = false;
+    const load = () => {
+      supabase
+        .from("gallery_images")
+        .select("id, image_url, title, category")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: false })
+        .then(({ data }) => {
+          if (cancelled) return;
+          const t = Date.now();
+          const withBust = (data && data.length ? data : (fallbackImages as Img[])).map((img) => ({
+            ...img,
+            image_url: img.image_url.startsWith("http")
+              ? `${img.image_url}${img.image_url.includes("?") ? "&" : "?"}t=${t}`
+              : img.image_url,
+          }));
+          setImages(withBust);
+          setLoading(false);
+        });
+    };
+    load();
+
+    const channel = supabase
+      .channel("gallery_images_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "gallery_images" }, () => load())
+      .subscribe();
+
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   return (

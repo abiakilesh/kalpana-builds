@@ -29,7 +29,7 @@ const fallbackImages = [
 interface Img { id: string; image_url: string; title: string | null; category?: string | null }
 
 function GalleryPage() {
-function GalleryPage() {
+
   const [images, setImages] = useState<Img[]>([]);
   const [active, setActive] = useState<Img | null>(null);
   const [loading, setLoading] = useState(true);
